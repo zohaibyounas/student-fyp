@@ -72,17 +72,40 @@ def test():
     db_count = 0
     users_count = 0
     user_dreams_count = 0
+    tables_info = {}
+    
     if conn:
         try:
             with conn.cursor() as cursor:
-                cursor.execute("SELECT COUNT(*) FROM dreams")
-                db_count = cursor.fetchone()[0]
-                cursor.execute("SELECT COUNT(*) FROM users")
-                users_count = cursor.fetchone()[0]
-                cursor.execute("SELECT COUNT(*) FROM user_dreams")
-                user_dreams_count = cursor.fetchone()[0]
+                # Check what tables exist
+                cursor.execute("""
+                    SELECT table_name 
+                    FROM information_schema.tables 
+                    WHERE table_schema = 'public'
+                """)
+                tables = cursor.fetchall()
+                tables_info["existing_tables"] = [table[0] for table in tables]
+                
+                # Try to count from each table
+                if "dreams" in tables_info["existing_tables"]:
+                    cursor.execute("SELECT COUNT(*) FROM dreams")
+                    db_count = cursor.fetchone()[0]
+                
+                if "users" in tables_info["existing_tables"]:
+                    cursor.execute("SELECT COUNT(*) FROM users")
+                    users_count = cursor.fetchone()[0]
+                else:
+                    tables_info["users_table_missing"] = True
+                
+                if "user_dreams" in tables_info["existing_tables"]:
+                    cursor.execute("SELECT COUNT(*) FROM user_dreams")
+                    user_dreams_count = cursor.fetchone()[0]
+                else:
+                    tables_info["user_dreams_table_missing"] = True
+                    
         except Exception as e:
             db_status = f"error: {str(e)}"
+            tables_info["error"] = str(e)
     
     return jsonify({
         "status": "ok", 
@@ -91,7 +114,8 @@ def test():
             "status": db_status,
             "dreams_count": db_count,
             "users_count": users_count,
-            "user_dreams_count": user_dreams_count
+            "user_dreams_count": user_dreams_count,
+            **tables_info
         },
         "models": {
             "sentiment": "loaded" if sentiment_model else "not loaded",
@@ -101,20 +125,32 @@ def test():
 
 @app.route("/api/register", methods=["POST"])
 def register():
+    print(f"🔍 Registration attempt received")
     if not conn:
+        print("❌ Database not connected")
         return jsonify({"error": "Database not connected"}), 500
     data = request.json or {}
     name = data.get("name", "").strip()
     email = data.get("email", "").strip().lower()
     password = data.get("password", "")
+    print(f"📝 Registration data: name={name}, email={email}, password_length={len(password)}")
+    
     if not name or not email or not password:
+        print("❌ Missing required fields")
         return jsonify({"error": "Name, email, and password are required"}), 400
     if len(password) < 6:
+        print("❌ Password too short")
         return jsonify({"error": "Password must be at least 6 characters"}), 400
     try:
-        if get_user_by_email(email):
+        existing_user = get_user_by_email(email)
+        print(f"🔍 Existing user check: {existing_user}")
+        if existing_user:
+            print("❌ Email already registered")
             return jsonify({"error": "Email already registered"}), 400
+        
         password_hash = generate_password_hash(password)
+        print("🔐 Password hashed successfully")
+        
         with conn.cursor() as cursor:
             cursor.execute(
                 "INSERT INTO users (name, email, password_hash) VALUES (%s, %s, %s) RETURNING id, name, email",
@@ -122,28 +158,42 @@ def register():
             )
             user = cursor.fetchone()
             conn.commit()
+            print(f"✅ User inserted successfully: {user}")
         return jsonify({"user": {"id": user[0], "name": user[1], "email": user[2]}})
     except Exception as e:
+        print(f"❌ Registration error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/login", methods=["POST"])
 def login():
+    print(f"🔍 Login attempt received")
     if not conn:
+        print("❌ Database not connected")
         return jsonify({"error": "Database not connected"}), 500
     data = request.json or {}
     email = data.get("email", "").strip().lower()
     password = data.get("password", "")
+    print(f"📝 Login data: email={email}, password_length={len(password)}")
+    
     if not email or not password:
+        print("❌ Missing email or password")
         return jsonify({"error": "Email and password are required"}), 400
     try:
         user = get_user_by_email(email)
+        print(f"🔍 User lookup result: {user}")
         if not user:
+            print("❌ User not found")
             return jsonify({"error": "Invalid credentials"}), 401
         user_id, user_name, user_email, password_hash = user
-        if not check_password_hash(password_hash, password):
+        password_valid = check_password_hash(password_hash, password)
+        print(f"🔐 Password check: {'valid' if password_valid else 'invalid'}")
+        if not password_valid:
+            print("❌ Invalid password")
             return jsonify({"error": "Invalid credentials"}), 401
+        print(f"✅ Login successful for user: {user_name}")
         return jsonify({"user": {"id": user_id, "name": user_name, "email": user_email}})
     except Exception as e:
+        print(f"❌ Login error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/user-dreams", methods=["GET", "POST"])

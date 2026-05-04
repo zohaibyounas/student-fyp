@@ -10,7 +10,11 @@ if DATABASE_URL:
         import psycopg2
         conn = psycopg2.connect(DATABASE_URL)
         conn.autocommit = False
+        print("🔌 Database connection established")
+        
         with conn.cursor() as cursor:
+            print("🏗️  Creating tables...")
+            
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS users (
@@ -22,6 +26,8 @@ if DATABASE_URL:
                 );
                 """
             )
+            print("✅ Users table created/verified")
+            
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS user_dreams (
@@ -35,6 +41,8 @@ if DATABASE_URL:
                 );
                 """
             )
+            print("✅ User dreams table created/verified")
+            
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS dreams (
@@ -47,10 +55,14 @@ if DATABASE_URL:
                 );
                 """
             )
+            print("✅ Dreams table created/verified")
+            
             conn.commit()
+            print("✅ All tables committed successfully")
+        
         print("✅ Database connected successfully")
     except Exception as e:
-        print(f"⚠️  Database not connected (app will still work without it): {e}")
+        print(f"❌ Database connection/setup error: {e}")
         conn = None
 else:
     print("⚠️  DATABASE_URL not set (app will still work without it)")
