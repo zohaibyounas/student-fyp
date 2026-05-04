@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Database Viewer - Islamic Dream Analyzer</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+        background-color: #f5f5f5;
+      }
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+      h1 {
+        color: #333;
+        text-align: center;
+        margin-bottom: 30px;
+      }
+      h2 {
+        color: #555;
+        border-bottom: 2px solid #388087;
+        padding-bottom: 10px;
+        margin-top: 40px;
+        margin-bottom: 20px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-bottom: 30px;
+      }
+      th,
+      td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #ddd;
+      }
+      th {
+        background-color: #388087;
+        color: white;
+        font-weight: bold;
+      }
+      tr:nth-child(even) {
+        background-color: #f9f9f9;
+      }
+      tr:hover {
+        background-color: #f0f8ff;
+      }
+      .stats {
+        display: flex;
+        justify-content: space-around;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+      }
+      .stat-box {
+        background: #388087;
+        color: white;
+        padding: 20px;
+        border-radius: 8px;
+        text-align: center;
+        min-width: 150px;
+        margin: 10px;
+      }
+      .stat-number {
+        font-size: 2em;
+        font-weight: bold;
+      }
+      .stat-label {
+        font-size: 0.9em;
+        opacity: 0.9;
+      }
+      .no-data {
+        text-align: center;
+        color: #666;
+        font-style: italic;
+        padding: 20px;
+      }
+      .back-link {
+        display: inline-block;
+        margin-bottom: 20px;
+        color: #388087;
+        text-decoration: none;
+        font-weight: bold;
+      }
+      .back-link:hover {
+        text-decoration: underline;
+      }
+      .dream-text {
+        max-width: 300px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <a href="/" class="back-link">← Back to App</a>
+      <h1>Database Viewer</h1>
+
+      <div class="stats">
+        <div class="stat-box">
+          <div class="stat-number">{{ users|length }}</div>
+          <div class="stat-label">Total Users</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number">{{ user_dreams|length }}</div>
+          <div class="stat-label">Total Dreams</div>
+        </div>
+      </div>
+
+      <h2>Users</h2>
+      {% if users %}
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Created At</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for user in users %}
+          <tr>
+            <td>{{ user.id }}</td>
+            <td>{{ user.name }}</td>
+            <td>{{ user.email }}</td>
+            <td>{{ user.created_at }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="no-data">No users found in database</div>
+      {% endif %}
+
+      <h2>User Dreams</h2>
+      {% if user_dreams %}
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>User Email</th>
+            <th>Dream Text</th>
+            <th>Sentiment</th>
+            <th>Islamic</th>
+            <th>Meaning</th>
+            <th>Created At</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for dream in user_dreams %}
+          <tr>
+            <td>{{ dream.id }}</td>
+            <td>{{ dream.user_email }}</td>
+            <td class="dream-text" title="{{ dream.dream_text }}">
+              {{ dream.dream_text }}
+            </td>
+            <td>{{ dream.sentiment }}</td>
+            <td>{{ dream.islamic }}</td>
+            <td class="dream-text" title="{{ dream.meaning }}">
+              {{ dream.meaning }}
+            </td>
+            <td>{{ dream.created_at }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="no-data">No dreams found in database</div>
+      {% endif %}
+    </div>
+  </body>
+</html>

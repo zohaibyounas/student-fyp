@@ -70,11 +70,17 @@ def home():
 def test():
     db_status = "connected" if conn else "not connected"
     db_count = 0
+    users_count = 0
+    user_dreams_count = 0
     if conn:
         try:
             with conn.cursor() as cursor:
                 cursor.execute("SELECT COUNT(*) FROM dreams")
                 db_count = cursor.fetchone()[0]
+                cursor.execute("SELECT COUNT(*) FROM users")
+                users_count = cursor.fetchone()[0]
+                cursor.execute("SELECT COUNT(*) FROM user_dreams")
+                user_dreams_count = cursor.fetchone()[0]
         except Exception as e:
             db_status = f"error: {str(e)}"
     
@@ -83,7 +89,9 @@ def test():
         "message": "Server is running",
         "database": {
             "status": db_status,
-            "dreams_count": db_count
+            "dreams_count": db_count,
+            "users_count": users_count,
+            "user_dreams_count": user_dreams_count
         },
         "models": {
             "sentiment": "loaded" if sentiment_model else "not loaded",
@@ -465,6 +473,44 @@ def view_dreams():
         return render_template("dreams.html", dreams=rows)
     except Exception as e:
         return f"Error loading dreams: {str(e)}", 500
+
+@app.route("/admin/db-viewer")
+def db_viewer():
+    if not conn:
+        return "Database not connected", 500
+    
+    try:
+        users = []
+        user_dreams = []
+        
+        with conn.cursor() as cursor:
+            # Get all users
+            cursor.execute("SELECT id, name, email, created_at FROM users ORDER BY created_at DESC")
+            user_rows = cursor.fetchall()
+            users = [{"id": row[0], "name": row[1], "email": row[2], "created_at": row[3]} for row in user_rows]
+            
+            # Get all user dreams with user email
+            cursor.execute("""
+                SELECT ud.id, u.email, ud.dream_text, ud.sentiment, ud.islamic, ud.meaning, ud.created_at 
+                FROM user_dreams ud 
+                JOIN users u ON ud.user_id = u.id 
+                ORDER BY ud.created_at DESC
+            """)
+            dream_rows = cursor.fetchall()
+            user_dreams = [{
+                "id": row[0], 
+                "user_email": row[1], 
+                "dream_text": row[2], 
+                "sentiment": row[3], 
+                "islamic": row[4], 
+                "meaning": row[5], 
+                "created_at": row[6]
+            } for row in dream_rows]
+            
+    except Exception as e:
+        return f"Database error: {str(e)}", 500
+    
+    return render_template("db_viewer.html", users=users, user_dreams=user_dreams)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)
