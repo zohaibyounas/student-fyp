@@ -294,5 +294,17 @@ def get_dreams():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/admin/dreams", methods=["GET"])
+def view_dreams():
+    if not conn:
+        return "Database not connected", 500
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT id, dream_text, sentiment, islamic, meaning, created_at FROM dreams ORDER BY created_at DESC")
+            rows = cursor.fetchall()
+        return render_template("dreams.html", dreams=rows)
+    except Exception as e:
+        return f"Error loading dreams: {str(e)}", 500
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)

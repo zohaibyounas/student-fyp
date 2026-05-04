@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dream Records</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        border: 1px solid #ccc;
+        padding: 8px;
+        text-align: left;
+      }
+      th {
+        background: #f2f2f2;
+      }
+      tr:nth-child(even) {
+        background: #fafafa;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Saved Dream Records</h1>
+    <p><a href="/test">Back to test endpoint</a></p>
+    {% if dreams %}
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Dream Text</th>
+          <th>Sentiment</th>
+          <th>Islamic</th>
+          <th>Meaning</th>
+          <th>Created At</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for dream in dreams %}
+        <tr>
+          <td>{{ dream[0] }}</td>
+          <td>{{ dream[1] }}</td>
+          <td>{{ dream[2] }}</td>
+          <td>{{ dream[3] }}</td>
+          <td>{{ dream[4] }}</td>
+          <td>{{ dream[5] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p>No dreams found in the database.</p>
+    {% endif %}
+  </body>
+</html>
