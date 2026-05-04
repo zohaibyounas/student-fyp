@@ -5,6 +5,7 @@ import os
 import requests
 import smtplib
 from email.message import EmailMessage
+from werkzeug.security import generate_password_hash, check_password_hash
 from config import conn
 
 app = Flask(__name__)
@@ -33,16 +34,18 @@ except Exception as e:
     print(f"⚠️  Could not load Islamic model: {e}")
     islamic_model = None
 
-# ─── Database Connection Check ───────────────────────────────────────────────
-try:
-    from config import conn
-    if conn:
-        print("✅ Database connected successfully")
-    else:
-        print("⚠️  Database not connected (app will work without it)")
-except Exception as e:
-    print(f"⚠️  Database connection error: {e}")
-    conn = None
+if conn:
+    print("✅ Database connected successfully")
+else:
+    print("⚠️  Database not connected (app will work without it)")
+
+# ─── Helper Functions ─────────────────────────────────────────────────────────
+def get_user_by_email(email):
+    if not conn:
+        return None
+    with conn.cursor() as cursor:
+        cursor.execute("SELECT id, name, email, password_hash FROM users WHERE email = %s", (email,))
+        return cursor.fetchone()
 
 # ─── Dream Analyzer ──────────────────────────────────────────────────────────
 def analyze_dream_ml(text):
@@ -87,6 +90,158 @@ def test():
             "islamic": "loaded" if islamic_model else "not loaded"
         }
     })
+
+@app.route("/api/register", methods=["POST"])
+def register():
+    if not conn:
+        return jsonify({"error": "Database not connected"}), 500
+    data = request.json or {}
+    name = data.get("name", "").strip()
+    email = data.get("email", "").strip().lower()
+    password = data.get("password", "")
+    if not name or not email or not password:
+        return jsonify({"error": "Name, email, and password are required"}), 400
+    if len(password) < 6:
+        return jsonify({"error": "Password must be at least 6 characters"}), 400
+    try:
+        if get_user_by_email(email):
+            return jsonify({"error": "Email already registered"}), 400
+        password_hash = generate_password_hash(password)
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO users (name, email, password_hash) VALUES (%s, %s, %s) RETURNING id, name, email",
+                (name, email, password_hash)
+            )
+            user = cursor.fetchone()
+            conn.commit()
+        return jsonify({"user": {"id": user[0], "name": user[1], "email": user[2]}})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/login", methods=["POST"])
+def login():
+    if not conn:
+        return jsonify({"error": "Database not connected"}), 500
+    data = request.json or {}
+    email = data.get("email", "").strip().lower()
+    password = data.get("password", "")
+    if not email or not password:
+        return jsonify({"error": "Email and password are required"}), 400
+    try:
+        user = get_user_by_email(email)
+        if not user:
+            return jsonify({"error": "Invalid credentials"}), 401
+        user_id, user_name, user_email, password_hash = user
+        if not check_password_hash(password_hash, password):
+            return jsonify({"error": "Invalid credentials"}), 401
+        return jsonify({"user": {"id": user_id, "name": user_name, "email": user_email}})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/user-dreams", methods=["GET", "POST"])
+def user_dreams():
+    if not conn:
+        return jsonify({"error": "Database not connected"}), 500
+    if request.method == "GET":
+        email = request.args.get("email", "").strip().lower()
+        if not email:
+            return jsonify({"error": "Email is required"}), 400
+        user = get_user_by_email(email)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        user_id = user[0]
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT id, dream_text, sentiment, islamic, meaning, created_at FROM user_dreams WHERE user_id = %s ORDER BY created_at DESC",
+                    (user_id,)
+                )
+                rows = cursor.fetchall()
+            dreams = [
+                {
+                    "id": row[0],
+                    "dream_text": row[1],
+                    "sentiment": row[2],
+                    "islamic": row[3],
+                    "meaning": row[4],
+                    "created_at": row[5].isoformat() if row[5] else None
+                }
+                for row in rows
+            ]
+            return jsonify({"dreams": dreams})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+    else:
+        data = request.json or {}
+        email = data.get("email", "").strip().lower()
+        dream_text = data.get("dream_text", "").strip()
+        sentiment = data.get("sentiment", "")
+        islamic = data.get("islamic", "")
+        meaning = data.get("meaning", "")
+        dream_id = data.get("id")
+        if not email or not dream_text:
+            return jsonify({"error": "Email and dream text are required"}), 400
+        user = get_user_by_email(email)
+        if not user:
+            return jsonify({"error": "User not found"}), 404
+        user_id = user[0]
+        try:
+            with conn.cursor() as cursor:
+                if dream_id:
+                    cursor.execute(
+                        "UPDATE user_dreams SET dream_text=%s, sentiment=%s, islamic=%s, meaning=%s WHERE id=%s AND user_id=%s RETURNING id, created_at",
+                        (dream_text, sentiment, islamic, meaning, dream_id, user_id)
+                    )
+                    updated = cursor.fetchone()
+                    if not updated:
+                        return jsonify({"error": "Dream not found or not owned by user"}), 404
+                    conn.commit()
+                    result_id, created_at = updated
+                else:
+                    cursor.execute(
+                        "INSERT INTO user_dreams (user_id, dream_text, sentiment, islamic, meaning) VALUES (%s, %s, %s, %s, %s) RETURNING id, created_at",
+                        (user_id, dream_text, sentiment, islamic, meaning)
+                    )
+                    result_id, created_at = cursor.fetchone()
+                    conn.commit()
+            return jsonify({
+                "dream": {
+                    "id": result_id,
+                    "dream_text": dream_text,
+                    "sentiment": sentiment,
+                    "islamic": islamic,
+                    "meaning": meaning,
+                    "created_at": created_at.isoformat() if created_at else None
+                }
+            })
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+@app.route("/api/user-dreams/<int:dream_id>", methods=["DELETE"])
+def delete_user_dream(dream_id):
+    if not conn:
+        return jsonify({"error": "Database not connected"}), 500
+    data = request.json or {}
+    email = data.get("email", "").strip().lower()
+    if not email:
+        return jsonify({"error": "Email is required"}), 400
+    user = get_user_by_email(email)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    user_id = user[0]
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM user_dreams WHERE id = %s AND user_id = %s RETURNING id",
+                (dream_id, user_id)
+            )
+            deleted = cursor.fetchone()
+            if not deleted:
+                return jsonify({"error": "Dream not found or not owned by user"}), 404
+            conn.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/analyze-dream", methods=["POST"])
 def dream_analyzer():
@@ -300,7 +455,12 @@ def view_dreams():
         return "Database not connected", 500
     try:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT id, dream_text, sentiment, islamic, meaning, created_at FROM dreams ORDER BY created_at DESC")
+            cursor.execute(
+                "SELECT ud.id, u.email, ud.dream_text, ud.sentiment, ud.islamic, ud.meaning, ud.created_at "
+                "FROM user_dreams ud "
+                "JOIN users u ON ud.user_id = u.id "
+                "ORDER BY ud.created_at DESC"
+            )
             rows = cursor.fetchall()
         return render_template("dreams.html", dreams=rows)
     except Exception as e:
