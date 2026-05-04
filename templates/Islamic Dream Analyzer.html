@@ -1862,7 +1862,7 @@
             document.getElementById('patternDate').value = today;
         });
 
-        document.getElementById('patternForm').addEventListener('submit', function(e) {
+        document.getElementById('patternForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
             // Collect form data
