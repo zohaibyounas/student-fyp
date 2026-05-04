@@ -329,7 +329,7 @@ def dream_analyzer():
 
 # ─── AI Chatbot (Gemini API) ──────────────────────────────────────────────────
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyDqy1EP6HLXi5JZXX9j7Ohth0TKdTva2-I")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 
 @app.route("/chatbot", methods=["POST"])
 def chatbot():
@@ -375,43 +375,49 @@ def chatbot():
         gemini_contents.append({"role": role, "parts": [{"text": h["content"]}]})
     gemini_contents.append({"role": "user", "parts": [{"text": user_message}]})
 
+    # Debugging: Print masked key to console
+    masked_key = f"{GEMINI_API_KEY[:4]}...{GEMINI_API_KEY[-4:]}" if GEMINI_API_KEY else "MISSING"
+    print(f"DEBUG: Using Gemini API Key: {masked_key}")
+
     try:
-        # Using gemini-1.5-flash which is the current stable flash model
-        model_name = "gemini-1.5-flash"
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+        model_name = "gemini-2.0-flash"
+        # Try v1 endpoint first, then v1beta
+        endpoints = [
+            f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent?key={GEMINI_API_KEY}",
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
+        ]
         
-        response = requests.post(
-            url,
-            headers={"Content-Type": "application/json"},
-            json={"contents": gemini_contents, "generationConfig": {"maxOutputTokens": 1000, "temperature": 0.7}},
-            timeout=30
-        )
-        
-        if response.status_code == 404:
-            return jsonify({"error": "Gemini API returned 404. This almost always means your API key is invalid, blocked (leaked), or not authorized. Please get a NEW API key from https://aistudio.google.com/app/apikey and set it as the GEMINI_API_KEY environment variable in Render."}), 503
+        last_error = ""
+        for url in endpoints:
+            try:
+                response = requests.post(
+                    url,
+                    headers={"Content-Type": "application/json"},
+                    json={"contents": gemini_contents, "generationConfig": {"maxOutputTokens": 1000, "temperature": 0.7}},
+                    timeout=30
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    if result.get("candidates"):
+                        bot_reply = result["candidates"][0]["content"]["parts"][0]["text"]
+                        return jsonify({"reply": bot_reply})
+                
+                last_error = f"Status {response.status_code}: {response.text}"
+            except Exception as e:
+                last_error = str(e)
+                continue
+
+        # If we reach here, both failed
+        if "404" in last_error:
+            return jsonify({"error": f"Gemini API returned 404 for model '{model_name}'. This usually means your API key is invalid or the model is not enabled for your project. Key being used: {masked_key}"}), 503
+        elif "403" in last_error:
+            return jsonify({"error": f"Gemini API returned 403 (Forbidden). Your key ({masked_key}) might be blocked or restricted."}), 503
             
-        response.raise_for_status()
-        result = response.json()
+        return jsonify({"error": f"Gemini API Error: {last_error}"}), 503
 
-        if "error" in result:
-            err_msg = result["error"].get("message", "Unknown error")
-            return jsonify({"error": f"Gemini error: {err_msg}"}), 503
-
-        if not result.get("candidates"):
-            return jsonify({"error": "Gemini gave empty response. This usually means the safety filters blocked the content or the API key is restricted."}), 503
-
-        bot_reply = result["candidates"][0]["content"]["parts"][0]["text"]
-        return jsonify({"reply": bot_reply})
-
-    except requests.exceptions.HTTPError as e:
-        status = e.response.status_code if e.response else 0
-        if status == 403:
-            return jsonify({"error": "Gemini API key is blocked or invalid (possibly reported as leaked). Please get a new key from: https://aistudio.google.com/app/apikey and set it as GEMINI_API_KEY environment variable."}), 503
-        elif status == 400:
-            return jsonify({"error": f"Bad Request to Gemini API. Details: {e.response.text}"}), 503
-        elif status == 429:
-            return jsonify({"error": "API rate limit exceeded. Please wait a moment and try again."}), 503
-        return jsonify({"error": f"Gemini HTTP error {status}: {str(e)}"}), 503
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
     except requests.exceptions.ConnectionError:
         return jsonify({"error": "Internet connection check . Gemini API is not connecting ."}), 503
     except requests.exceptions.Timeout:
