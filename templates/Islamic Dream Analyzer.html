@@ -1456,6 +1456,9 @@
     </div>
 
     <script>
+        // Global state for dreams to support editing across server/local
+        let cachedDiaryEntries = [];
+
         // Authentication System
         function showLogin() {
             document.getElementById('loginModal').style.display = 'flex';
@@ -2531,6 +2534,9 @@
                 entries = JSON.parse(localStorage.getItem('diaryEntries') || '[]');
             }
 
+            // Update global cache for editing
+            cachedDiaryEntries = entries;
+
             const container = document.getElementById('diaryEntries');
             container.innerHTML = '';
             
@@ -2617,15 +2623,17 @@
         });
 
         function editDream(id) {
-            const entries = JSON.parse(localStorage.getItem('diaryEntries') || '[]');
-            const entry = entries.find(e => e.id == id);
+            // Check both global cache and local storage
+            const entry = cachedDiaryEntries.find(e => e.id == id);
             
             if (entry) {
                 // Switch to Dream Analyzer module
                 document.querySelectorAll('.module-item').forEach(item => {
                     item.classList.remove('active');
                 });
-                document.querySelector('.module-item[onclick*="dreamAnalyzer"]').classList.add('active');
+                
+                const analyzerBtn = Array.from(document.querySelectorAll('.module-item')).find(item => item.textContent.includes('Analyzer'));
+                if (analyzerBtn) analyzerBtn.classList.add('active');
                 
                 document.querySelectorAll('.module-content').forEach(content => {
                     content.classList.remove('active');
@@ -2633,11 +2641,16 @@
                 document.getElementById('dreamAnalyzer').classList.add('active');
                 
                 // Pre-fill the dream description
-                document.getElementById('dreamDescription').value = entry.description;
+                document.getElementById('dreamDescription').value = entry.description || entry.dream;
                 document.getElementById('editDreamId').value = entry.id;
                 
                 // Show notification
                 showNotification('Dream loaded for editing. Update and re-analyze to save changes.');
+                
+                // Scroll to top
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            } else {
+                console.error("Dream not found for editing:", id);
             }
         }
 
