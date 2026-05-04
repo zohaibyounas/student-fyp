@@ -1689,38 +1689,56 @@
         .getElementById("loginForm")
         .addEventListener("submit", async function (e) {
           e.preventDefault();
+          console.log("🔍 Login form submitted");
           const email = document.getElementById("loginEmail").value.trim();
           const password = document.getElementById("loginPassword").value;
 
-          const response = await fetch("/api/login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, password }),
+          console.log("📝 Login data:", {
+            email,
+            passwordLength: password.length,
           });
-          const result = await response.json();
 
-          if (response.ok && result.user) {
-            const user = result.user;
-            sessionStorage.setItem("currentUser", JSON.stringify(user));
+          try {
+            console.log("📡 Sending login request to /api/login");
+            const response = await fetch("/api/login", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ email, password }),
+            });
+            console.log("📡 Response status:", response.status);
+            const result = await response.json();
+            console.log("📡 Response data:", result);
 
-            document.getElementById("frontPage").style.display = "none";
-            document.getElementById("dashboard").style.display = "block";
-            document.getElementById("welcomeUserName").textContent =
-              `Welcome, ${user.name}!`;
-            document.getElementById("sidebarUserName").textContent = user.name;
-            document.getElementById("sidebarUserEmail").textContent =
-              user.email;
-            document.getElementById("profileInitial").textContent = user.name
-              .charAt(0)
-              .toUpperCase();
-            hideLogin();
+            if (response.ok && result.user) {
+              console.log("✅ Login successful:", result.user);
+              const user = result.user;
+              sessionStorage.setItem("currentUser", JSON.stringify(user));
 
-            await loadTrackerData();
-            await loadDiaryEntries();
-            showWelcomeNotification(user.name);
-          } else {
+              document.getElementById("frontPage").style.display = "none";
+              document.getElementById("dashboard").style.display = "block";
+              document.getElementById("welcomeUserName").textContent =
+                `Welcome, ${user.name}!`;
+              document.getElementById("sidebarUserName").textContent =
+                user.name;
+              document.getElementById("sidebarUserEmail").textContent =
+                user.email;
+              document.getElementById("profileInitial").textContent = user.name
+                .charAt(0)
+                .toUpperCase();
+              hideLogin();
+
+              await loadTrackerData();
+              await loadDiaryEntries();
+              showWelcomeNotification(user.name);
+            } else {
+              console.log("❌ Login failed:", result.error);
+              document.getElementById("loginMessage").textContent =
+                result.error || "Invalid credentials! Please try again.";
+            }
+          } catch (error) {
+            console.log("❌ Login error:", error);
             document.getElementById("loginMessage").textContent =
-              result.error || "Invalid credentials! Please try again.";
+              "Network error. Please try again.";
           }
         });
 
@@ -1728,6 +1746,7 @@
         .getElementById("signupForm")
         .addEventListener("submit", async function (e) {
           e.preventDefault();
+          console.log("🔍 Signup form submitted");
           const name = document.getElementById("signupName").value.trim();
           const email = document.getElementById("signupEmail").value.trim();
           const password = document.getElementById("signupPassword").value;
@@ -1735,29 +1754,47 @@
             "signupConfirmPassword",
           ).value;
 
+          console.log("📝 Signup data:", {
+            name,
+            email,
+            passwordLength: password.length,
+          });
+
           if (password !== confirmPassword) {
+            console.log("❌ Passwords don't match");
             alert("Passwords do not match!");
             return;
           }
 
           if (password.length < 6) {
+            console.log("❌ Password too short");
             alert("Password must be at least 6 characters long!");
             return;
           }
 
-          const response = await fetch("/api/register", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name, email, password }),
-          });
-          const result = await response.json();
+          try {
+            console.log("📡 Sending registration request to /api/register");
+            const response = await fetch("/api/register", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name, email, password }),
+            });
+            console.log("📡 Response status:", response.status);
+            const result = await response.json();
+            console.log("📡 Response data:", result);
 
-          if (response.ok && result.user) {
-            alert("Account created successfully! Please login.");
-            hideSignup();
-            showLogin();
-          } else {
-            alert(result.error || "Registration failed.");
+            if (response.ok && result.user) {
+              console.log("✅ Registration successful:", result.user);
+              alert("Account created successfully! Please login.");
+              hideSignup();
+              showLogin();
+            } else {
+              console.log("❌ Registration failed:", result.error);
+              alert(result.error || "Registration failed.");
+            }
+          } catch (error) {
+            console.log("❌ Registration error:", error);
+            alert("Network error during registration. Please try again.");
           }
         });
 
