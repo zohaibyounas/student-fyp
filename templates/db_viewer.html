@@ -225,90 +225,94 @@
       <div class="no-data">No dreams found in database</div>
       {% endif %}
     </div>
-    
+
     <script>
       function log(message) {
-        const output = document.getElementById('debugOutput');
-        output.innerHTML += new Date().toLocaleTimeString() + ': ' + message + '<br>';
+        const output = document.getElementById("debugOutput");
+        output.innerHTML +=
+          new Date().toLocaleTimeString() + ": " + message + "<br>";
         console.log(message);
       }
-      
+
       async function testRegistration() {
-        log('🔍 Testing user registration...');
+        log("🔍 Testing user registration...");
         const testUser = {
-          name: 'Test User',
-          email: 'test' + Date.now() + '@example.com',
-          password: 'testpass123'
+          name: "Test User",
+          email: "test" + Date.now() + "@example.com",
+          password: "testpass123",
         };
-        
+
         try {
-          log('📡 Sending registration request...');
-          const response = await fetch('/api/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(testUser)
+          log("📡 Sending registration request...");
+          const response = await fetch("/api/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(testUser),
           });
-          
-          log('📡 Response status: ' + response.status);
+
+          log("📡 Response status: " + response.status);
           const result = await response.json();
-          log('📡 Response: ' + JSON.stringify(result));
-          
+          log("📡 Response: " + JSON.stringify(result));
+
           if (response.ok && result.user) {
-            log('✅ Registration successful! User ID: ' + result.user.id);
-            log('🔄 Reloading page to see new user...');
+            log("✅ Registration successful! User ID: " + result.user.id);
+            log("🔄 Reloading page to see new user...");
             setTimeout(() => window.location.reload(), 1000);
           } else {
-            log('❌ Registration failed: ' + (result.error || 'Unknown error'));
+            log("❌ Registration failed: " + (result.error || "Unknown error"));
           }
         } catch (error) {
-          log('❌ Network error: ' + error.message);
+          log("❌ Network error: " + error.message);
         }
       }
-      
+
       async function testLogin() {
-        log('🔍 Testing user login...');
+        log("🔍 Testing user login...");
         // First try to register a test user, then login
         const testUser = {
-          name: 'Login Test User',
-          email: 'logintest' + Date.now() + '@example.com',
-          password: 'testpass123'
+          name: "Login Test User",
+          email: "logintest" + Date.now() + "@example.com",
+          password: "testpass123",
         };
-        
+
         try {
           // Register first
-          log('📝 Registering test user...');
-          let response = await fetch('/api/register', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(testUser)
+          log("📝 Registering test user...");
+          let response = await fetch("/api/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(testUser),
           });
-          
+
           if (response.ok) {
-            log('✅ User registered, now testing login...');
-            
+            log("✅ User registered, now testing login...");
+
             // Now try to login
-            response = await fetch('/api/login', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email: testUser.email, password: testUser.password })
+            response = await fetch("/api/login", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                email: testUser.email,
+                password: testUser.password,
+              }),
             });
-            
-            log('📡 Login response status: ' + response.status);
+
+            log("📡 Login response status: " + response.status);
             const result = await response.json();
-            log('📡 Login response: ' + JSON.stringify(result));
-            
+            log("📡 Login response: " + JSON.stringify(result));
+
             if (response.ok && result.user) {
-              log('✅ Login successful! User: ' + result.user.name);
-              log('🔄 Reloading page to see updated counts...');
+              log("✅ Login successful! User: " + result.user.name);
+              log("🔄 Reloading page to see updated counts...");
               setTimeout(() => window.location.reload(), 1000);
             } else {
-              log('❌ Login failed: ' + (result.error || 'Unknown error'));
+              log("❌ Login failed: " + (result.error || "Unknown error"));
             }
           } else {
-            log('❌ Registration failed, cannot test login');
+            log("❌ Registration failed, cannot test login");
           }
         } catch (error) {
-          log('❌ Network error: ' + error.message);
+          log("❌ Network error: " + error.message);
         }
       }
     </script>

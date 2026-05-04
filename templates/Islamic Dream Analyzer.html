@@ -1482,43 +1482,60 @@
             }
         }
 
-        document.getElementById('loginForm').addEventListener('submit', function(e) {
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            const email = document.getElementById('loginEmail').value;
+            const email = document.getElementById('loginEmail').value.trim();
             const password = document.getElementById('loginPassword').value;
+            const loginMessage = document.getElementById('loginMessage');
 
-            // Simple validation
-            const users = JSON.parse(localStorage.getItem('users') || '[]');
-            const user = users.find(u => u.email === email && u.password === password);
+            loginMessage.textContent = 'Logging in...';
 
-            if (user) {
-                // Successful login
-                localStorage.setItem('currentUser', JSON.stringify(user));
-                document.getElementById('frontPage').style.display = 'none';
-                document.getElementById('dashboard').style.display = 'block';
-                document.getElementById('welcomeUserName').textContent = `Welcome, ${user.name}!`;
-                document.getElementById('sidebarUserName').textContent = user.name;
-                document.getElementById('sidebarUserEmail').textContent = user.email;
-                document.getElementById('profileInitial').textContent = user.name.charAt(0).toUpperCase();
-                hideLogin();
-                
-                // Load initial data
-                loadTrackerData();
-                loadDiaryEntries();
-                
-                // Show welcome notification
-                showWelcomeNotification(user.name);
-            } else {
-                document.getElementById('loginMessage').textContent = 'Invalid credentials! Please try again.';
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.user) {
+                    // Successful login
+                    localStorage.setItem('currentUser', JSON.stringify(result.user));
+                    document.getElementById('frontPage').style.display = 'none';
+                    document.getElementById('dashboard').style.display = 'block';
+                    document.getElementById('welcomeUserName').textContent = `Welcome, ${result.user.name}!`;
+                    document.getElementById('sidebarUserName').textContent = result.user.name;
+                    document.getElementById('sidebarUserEmail').textContent = result.user.email;
+                    document.getElementById('profileInitial').textContent = result.user.name.charAt(0).toUpperCase();
+                    hideLogin();
+                    
+                    // Load initial data
+                    await loadTrackerData();
+                    await loadDiaryEntries();
+                    
+                    // Show welcome notification
+                    showWelcomeNotification(result.user.name);
+                } else {
+                    loginMessage.textContent = result.error || 'Invalid credentials! Please try again.';
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                loginMessage.textContent = 'Network error. Please try again.';
             }
         });
 
-        document.getElementById('signupForm').addEventListener('submit', function(e) {
+        document.getElementById('signupForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            const name = document.getElementById('signupName').value;
-            const email = document.getElementById('signupEmail').value;
+            const name = document.getElementById('signupName').value.trim();
+            const email = document.getElementById('signupEmail').value.trim().toLowerCase();
             const password = document.getElementById('signupPassword').value;
             const confirmPassword = document.getElementById('signupConfirmPassword').value;
+
+            if (!name || !email || !password) {
+                alert('Please fill in all fields!');
+                return;
+            }
 
             if (password !== confirmPassword) {
                 alert('Passwords do not match!');
@@ -1530,19 +1547,26 @@
                 return;
             }
 
-            const users = JSON.parse(localStorage.getItem('users') || '[]');
-            
-            if (users.find(u => u.email === email)) {
-                alert('Email already registered!');
-                return;
+            try {
+                const response = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, email, password })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.user) {
+                    alert('Account created successfully! Please login.');
+                    hideSignup();
+                    showLogin();
+                } else {
+                    alert(result.error || 'Registration failed. Please try again.');
+                }
+            } catch (error) {
+                console.error('Registration error:', error);
+                alert('Network error during registration. Please try again.');
             }
-
-            users.push({ name, email, password });
-            localStorage.setItem('users', JSON.stringify(users));
-
-            alert('Account created successfully! Please login.');
-            hideSignup();
-            showLogin();
         });
 
         // Module Navigation
@@ -1566,6 +1590,7 @@
 
         function logout() {
             if (confirm('Are you sure you want to logout?')) {
+                localStorage.removeItem('currentUser');
                 document.getElementById('dashboard').style.display = 'none';
                 document.getElementById('frontPage').style.display = 'block';
                 document.getElementById('loginForm').reset();
@@ -1574,7 +1599,7 @@
         }
 
         // Dream Analyzer Functionality - COMPLETELY FIXED
-        document.getElementById('dreamAnalysisForm').addEventListener('submit', function(e) {
+        document.getElementById('dreamAnalysisForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             const dreamText = document.getElementById('dreamDescription').value.trim();
             const editId = document.getElementById('editDreamId').value;
@@ -1609,12 +1634,12 @@
             
             if (editId) {
                 // Update existing dream
-                updateDreamInTracker(editId, dreamData);
+                await saveToTracker(dreamData); // saveToTracker handles both new and updates now
                 document.getElementById('editDreamId').value = '';
                 showNotification('Dream updated successfully!');
             } else {
                 // Save new dream
-                saveToTracker(dreamData);
+                await saveToTracker(dreamData);
                 showNotification('Dream analyzed and saved successfully!');
             }
             
@@ -1908,7 +1933,8 @@
             savePatternData(patternData, analysis);
             
             // Save each dream to tracker and diary
-            patternData.dreams.forEach((dream, index) => {
+            for (let index = 0; index < patternData.dreams.length; index++) {
+                const dream = patternData.dreams[index];
                 const dreamAnalysis = analyzeDream(dream.description);
                 const dreamData = {
                     id: Date.now() + index,
@@ -1922,8 +1948,8 @@
                     intensity: dream.intensity
                 };
                 
-                saveToTracker(dreamData);
-            });
+                await saveToTracker(dreamData);
+            }
             
             showNotification('Pattern analysis completed successfully! All dreams saved to your diary.');
         });
@@ -2215,27 +2241,52 @@
         });
 
         // Dream Tracker Functionality
-        function saveToTracker(dream) {
+        async function saveToTracker(dream) {
             try {
-                const dreams = JSON.parse(localStorage.getItem('trackerDreams') || '[]');
-                dream.id = dream.id || Date.now();
+                const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
                 
-                // Remove if already exists (for updates)
-                const existingIndex = dreams.findIndex(d => d.id == dream.id);
-                if (existingIndex !== -1) {
-                    dreams[existingIndex] = dream;
+                if (currentUser) {
+                    // Save to server
+                    const response = await fetch('/api/user-dreams', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            email: currentUser.email,
+                            dream_text: dream.dream,
+                            sentiment: dream.sentiment,
+                            islamic: dream.islamic,
+                            meaning: dream.meaning,
+                            id: dream.id && dream.id < 1000000000 ? dream.id : null // Only send ID if it looks like a DB ID
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        const result = await response.json();
+                        if (result.dream) {
+                            dream.id = result.dream.id;
+                            dream.timestamp = result.dream.created_at;
+                        }
+                    }
                 } else {
-                    dreams.unshift(dream);
+                    // Save to localStorage for guests
+                    const dreams = JSON.parse(localStorage.getItem('trackerDreams') || '[]');
+                    dream.id = dream.id || Date.now();
+                    
+                    const existingIndex = dreams.findIndex(d => d.id == dream.id);
+                    if (existingIndex !== -1) {
+                        dreams[existingIndex] = dream;
+                    } else {
+                        dreams.unshift(dream);
+                    }
+                    localStorage.setItem('trackerDreams', JSON.stringify(dreams));
+                    
+                    // Also save to diary for guests
+                    saveToDiary(dream);
                 }
                 
-                localStorage.setItem('trackerDreams', JSON.stringify(dreams));
-                
-                // Also save to diary
-                saveToDiary(dream);
-                
                 // Update displays
-                loadTrackerData();
-                loadDiaryEntries();
+                await loadTrackerData();
+                await loadDiaryEntries();
                 
                 return true;
             } catch (error) {
@@ -2284,10 +2335,25 @@
             }
         }
 
-        function loadTrackerData() {
-            const dreams = JSON.parse(localStorage.getItem('trackerDreams') || '[]');
+        async function loadTrackerData() {
+            let dreams = [];
+            const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+
+            if (currentUser) {
+                try {
+                    const response = await fetch(`/api/user-dreams?email=${encodeURIComponent(currentUser.email)}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        dreams = data.dreams || [];
+                    }
+                } catch (error) {
+                    console.error("Error loading tracker data from server:", error);
+                }
+            } else {
+                dreams = JSON.parse(localStorage.getItem('trackerDreams') || '[]');
+            }
+
             const container = document.getElementById('trackerDreamsList');
-            
             container.innerHTML = '';
             
             // Update stats
@@ -2312,12 +2378,12 @@
             }
             
             recentDreams.forEach(dream => {
-                const date = new Date(dream.timestamp).toLocaleDateString();
+                const date = new Date(dream.timestamp || dream.created_at).toLocaleDateString();
                 const dreamItem = document.createElement('div');
                 dreamItem.className = 'dream-item';
                 dreamItem.innerHTML = `
                     <div class="dream-content">
-                        <div><strong>${dream.dream.substring(0, 100)}${dream.dream.length > 100 ? '...' : ''}</strong></div>
+                        <div><strong>${dream.dream_text ? dream.dream_text.substring(0, 100) : dream.dream.substring(0, 100)}${(dream.dream_text || dream.dream).length > 100 ? '...' : ''}</strong></div>
                         <div class="dream-meta">
                             <span class="sentiment-badge sentiment-${dream.sentiment}">${dream.sentiment.toUpperCase()}</span>
                             <span class="islamic-badge islamic-${dream.islamic}">${dream.islamic.toUpperCase()}</span>
@@ -2437,10 +2503,35 @@
         // ── End Mental Health Alert ──────────────────────────────────────────
 
         // Dream Diary Functionality
-        function loadDiaryEntries() {
-            const entries = JSON.parse(localStorage.getItem('diaryEntries') || '[]');
+        async function loadDiaryEntries() {
+            let entries = [];
+            const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+
+            if (currentUser) {
+                try {
+                    const response = await fetch(`/api/user-dreams?email=${encodeURIComponent(currentUser.email)}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        entries = data.dreams || [];
+                        // Map server field names to frontend expected names
+                        entries = entries.map(e => ({
+                            id: e.id,
+                            description: e.dream_text,
+                            sentiment: e.sentiment,
+                            islamic: e.islamic,
+                            meaning: e.meaning,
+                            timestamp: e.created_at,
+                            date: e.created_at.split('T')[0]
+                        }));
+                    }
+                } catch (error) {
+                    console.error("Error loading diary entries from server:", error);
+                }
+            } else {
+                entries = JSON.parse(localStorage.getItem('diaryEntries') || '[]');
+            }
+
             const container = document.getElementById('diaryEntries');
-            
             container.innerHTML = '';
             
             if (entries.length === 0) {
@@ -2550,18 +2641,37 @@
             }
         }
 
-        function deleteDream(id) {
-            let entries = JSON.parse(localStorage.getItem('diaryEntries') || '[]');
-            entries = entries.filter(e => e.id != id);
-            localStorage.setItem('diaryEntries', JSON.stringify(entries));
+        async function deleteDream(id) {
+            const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
             
-            // Also remove from tracker
-            let trackerDreams = JSON.parse(localStorage.getItem('trackerDreams') || '[]');
-            trackerDreams = trackerDreams.filter(d => d.id != id);
-            localStorage.setItem('trackerDreams', JSON.stringify(trackerDreams));
+            if (currentUser && id < 1000000000) { // Assuming DB IDs are smaller than Date.now() timestamps
+                try {
+                    const response = await fetch(`/api/user-dreams/${id}`, {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email: currentUser.email })
+                    });
+                    
+                    if (!response.ok) {
+                        console.error("Failed to delete dream from server");
+                    }
+                } catch (error) {
+                    console.error("Error deleting dream from server:", error);
+                }
+            } else {
+                // Delete from localStorage
+                let entries = JSON.parse(localStorage.getItem('diaryEntries') || '[]');
+                entries = entries.filter(e => e.id != id);
+                localStorage.setItem('diaryEntries', JSON.stringify(entries));
+                
+                // Also remove from tracker
+                let trackerDreams = JSON.parse(localStorage.getItem('trackerDreams') || '[]');
+                trackerDreams = trackerDreams.filter(d => d.id != id);
+                localStorage.setItem('trackerDreams', JSON.stringify(trackerDreams));
+            }
             
-            loadDiaryEntries();
-            loadTrackerData();
+            await loadDiaryEntries();
+            await loadTrackerData();
             showNotification('Dream deleted successfully!');
         }
 

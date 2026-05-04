@@ -1200,6 +1200,40 @@
           >
             <span>🚀</span> Create Account
           </button>
+          <div style="margin-top: 10px; display: flex; gap: 10px">
+            <button
+              type="button"
+              onclick="debugSignupForm()"
+              style="
+                flex: 1;
+                padding: 8px;
+                background: #ff9800;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 12px;
+              "
+            >
+              🔧 Debug Form
+            </button>
+            <button
+              type="button"
+              onclick="testSignupAPI()"
+              style="
+                flex: 1;
+                padding: 8px;
+                background: #6fb3b8;
+                color: white;
+                border: none;
+                border-radius: 4px;
+                cursor: pointer;
+                font-size: 12px;
+              "
+            >
+              📡 Test API
+            </button>
+          </div>
         </form>
         <div style="text-align: center; margin-top: 20px">
           <p>
@@ -1746,19 +1780,39 @@
         .getElementById("signupForm")
         .addEventListener("submit", async function (e) {
           e.preventDefault();
-          console.log("🔍 Signup form submitted");
-          const name = document.getElementById("signupName").value.trim();
-          const email = document.getElementById("signupEmail").value.trim();
-          const password = document.getElementById("signupPassword").value;
-          const confirmPassword = document.getElementById(
-            "signupConfirmPassword",
-          ).value;
+          console.log("🔍 Signup form submitted - event captured");
 
-          console.log("📝 Signup data:", {
+          const nameField = document.getElementById("signupName");
+          const emailField = document.getElementById("signupEmail");
+          const passwordField = document.getElementById("signupPassword");
+          const confirmPasswordField = document.getElementById(
+            "signupConfirmPassword",
+          );
+
+          console.log("✅ Form fields found:", {
+            name: nameField ? "Yes" : "No",
+            email: emailField ? "Yes" : "No",
+            password: passwordField ? "Yes" : "No",
+            confirmPassword: confirmPasswordField ? "Yes" : "No",
+          });
+
+          const name = nameField.value.trim();
+          const email = emailField.value.trim().toLowerCase();
+          const password = passwordField.value;
+          const confirmPassword = confirmPasswordField.value;
+
+          console.log("📝 Signup data collected:", {
             name,
             email,
             passwordLength: password.length,
+            confirmPasswordLength: confirmPassword.length,
           });
+
+          if (!name || !email || !password) {
+            console.log("❌ Missing required fields");
+            alert("Please fill in all fields!");
+            return;
+          }
 
           if (password !== confirmPassword) {
             console.log("❌ Passwords don't match");
@@ -1774,18 +1828,28 @@
 
           try {
             console.log("📡 Sending registration request to /api/register");
+            const bodyData = { name, email, password };
+            console.log("📤 Request body:", bodyData);
+
             const response = await fetch("/api/register", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ name, email, password }),
+              body: JSON.stringify(bodyData),
             });
+
             console.log("📡 Response status:", response.status);
+            console.log(
+              "📡 Response headers:",
+              response.headers.get("content-type"),
+            );
+
             const result = await response.json();
             console.log("📡 Response data:", result);
 
             if (response.ok && result.user) {
               console.log("✅ Registration successful:", result.user);
               alert("Account created successfully! Please login.");
+              document.getElementById("signupForm").reset();
               hideSignup();
               showLogin();
             } else {
@@ -1794,7 +1858,10 @@
             }
           } catch (error) {
             console.log("❌ Registration error:", error);
-            alert("Network error during registration. Please try again.");
+            console.log("Error stack:", error.stack);
+            alert(
+              "Network error during registration. Check console for details.",
+            );
           }
         });
 
