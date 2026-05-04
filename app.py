@@ -33,6 +33,17 @@ except Exception as e:
     print(f"⚠️  Could not load Islamic model: {e}")
     islamic_model = None
 
+# ─── Database Connection Check ───────────────────────────────────────────────
+try:
+    from config import conn
+    if conn:
+        print("✅ Database connected successfully")
+    else:
+        print("⚠️  Database not connected (app will work without it)")
+except Exception as e:
+    print(f"⚠️  Database connection error: {e}")
+    conn = None
+
 # ─── Dream Analyzer ──────────────────────────────────────────────────────────
 def analyze_dream_ml(text):
     clean = clean_text(text)
@@ -54,7 +65,28 @@ def home():
 
 @app.route("/test", methods=["GET"])
 def test():
-    return jsonify({"status": "ok", "message": "Server is running"})
+    db_status = "connected" if conn else "not connected"
+    db_count = 0
+    if conn:
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT COUNT(*) FROM dreams")
+                db_count = cursor.fetchone()[0]
+        except Exception as e:
+            db_status = f"error: {str(e)}"
+    
+    return jsonify({
+        "status": "ok", 
+        "message": "Server is running",
+        "database": {
+            "status": db_status,
+            "dreams_count": db_count
+        },
+        "models": {
+            "sentiment": "loaded" if sentiment_model else "not loaded",
+            "islamic": "loaded" if islamic_model else "not loaded"
+        }
+    })
 
 @app.route("/analyze-dream", methods=["POST"])
 def dream_analyzer():
