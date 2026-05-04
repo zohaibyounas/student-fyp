@@ -388,7 +388,7 @@ def chatbot():
         )
         
         if response.status_code == 404:
-            return jsonify({"error": f"Gemini Model '{model_name}' not found. Please check if the model name is correct or available in your region."}), 503
+            return jsonify({"error": "Gemini API returned 404. This almost always means your API key is invalid, blocked (leaked), or not authorized. Please get a NEW API key from https://aistudio.google.com/app/apikey and set it as the GEMINI_API_KEY environment variable in Render."}), 503
             
         response.raise_for_status()
         result = response.json()
