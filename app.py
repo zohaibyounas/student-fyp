@@ -7,6 +7,8 @@ import requests
 import smtplib
 from email.message import EmailMessage
 from werkzeug.security import generate_password_hash, check_password_hash
+from dotenv import load_dotenv
+load_dotenv()
 from config import conn
 
 app = Flask(__name__)
@@ -110,6 +112,8 @@ def analyze_dream_with_ai(text):
                         if islamic not in ("rehmani", "shaitani", "nafsani"):
                             islamic = "nafsani"
                         return sentiment, islamic, meaning
+                else:
+                    print(f"DEBUG Dream Analyzer Gemini: Status {resp.status_code}, Response: {resp.text[:500]}")
             except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
                 continue
             except (json.JSONDecodeError, KeyError, IndexError):
@@ -479,7 +483,17 @@ def chatbot():
                         bot_reply = result["candidates"][0]["content"]["parts"][0]["text"]
                         return jsonify({"reply": bot_reply})
                 
-                last_error = f"Status {response.status_code}: {response.text}"
+                print(f"DEBUG Gemini: Status {response.status_code}, Response: {response.text[:500]}")
+                last_error = f"Status {response.status_code}: {response.text[:300]}"
+                
+                # Parse the actual Google error message
+                try:
+                    err_data = response.json()
+                    google_msg = err_data.get("error", {}).get("message", "")
+                    if google_msg:
+                        last_error = f"Status {response.status_code}: {google_msg}"
+                except:
+                    pass
             except requests.exceptions.ConnectionError as e:
                 last_error = f"ConnectionError: {str(e)}"
                 continue
@@ -490,15 +504,7 @@ def chatbot():
                 last_error = str(e)
                 continue
 
-        if "404" in last_error:
-            return jsonify({"error": f"Gemini API returned 404 for model '{model_name}'. API key may be invalid or model not enabled. Key: {masked_key}"}), 503
-        elif "403" in last_error:
-            return jsonify({"error": f"Gemini API returned 403 (Forbidden). Your key ({masked_key}) might be blocked or restricted."}), 503
-        elif "ConnectionError" in last_error:
-            return jsonify({"error": "Internet connection issue. Gemini API is not reachable. Please check your internet."}), 503
-        elif "Timeout" in last_error:
-            return jsonify({"error": "Gemini API request timed out. Please try again."}), 503
-            
+        print(f"DEBUG Gemini FINAL ERROR: {last_error}")
         return jsonify({"error": f"Gemini API Error: {last_error}"}), 503
 
     except Exception as e:
