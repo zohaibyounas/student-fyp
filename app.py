@@ -74,8 +74,8 @@ def analyze_dream_with_ai(text):
 
     try:
         endpoints = [
-            f"https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key={api_key}",
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+            f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={api_key}",
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
         ]
 
         for url in endpoints:
@@ -454,7 +454,7 @@ def chatbot():
     print(f"DEBUG: Using Gemini API Key: {masked_key}")
 
     try:
-        model_name = "gemini-2.0-flash"
+        model_name = "gemini-2.5-flash"
         endpoints = [
             f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent?key={GEMINI_API_KEY}",
             f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
