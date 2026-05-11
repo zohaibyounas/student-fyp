@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, render_template
 import pickle
 import re
 import os
+import json
 import requests
 import smtplib
 from email.message import EmailMessage
@@ -47,18 +48,92 @@ def get_user_by_email(email):
         cursor.execute("SELECT id, name, email, password_hash FROM users WHERE email = %s", (email,))
         return cursor.fetchone()
 
-# ─── Dream Analyzer ──────────────────────────────────────────────────────────
-def analyze_dream_ml(text):
+# ─── Dream Analyzer (Gemini AI-powered) ──────────────────────────────────────
+def analyze_dream_with_ai(text):
+    """Analyze dream using Gemini API for meaningful interpretation."""
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        return analyze_dream_fallback(text)
+
+    prompt = (
+        "You are an expert Islamic dream interpreter. Analyze this dream and return ONLY a valid JSON object (no markdown, no extra text).\n\n"
+        f"Dream: \"{text}\"\n\n"
+        "Return JSON with exactly these keys:\n"
+        "{\n"
+        '  "sentiment": "positive" or "negative" or "neutral",\n'
+        '  "islamic": "rehmani" or "shaitani" or "nafsani",\n'
+        '  "meaning": "A detailed 2-3 sentence interpretation based on Islamic sources (Quran, Hadith, Ibn Sirin, Al-Nabulsi). Include the spiritual significance and practical guidance."\n'
+        "}\n\n"
+        "Rules:\n"
+        "- Use authentic Islamic dream interpretation sources\n"
+        "- sentiment must be exactly one of: positive, negative, neutral\n"
+        "- islamic must be exactly one of: rehmani, shaitani, nafsani\n"
+        "- meaning should reference Islamic scholars or Hadith where applicable\n"
+        "- Return ONLY the JSON object, nothing else"
+    )
+
+    try:
+        endpoints = [
+            f"https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key={api_key}",
+            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+        ]
+
+        for url in endpoints:
+            try:
+                resp = requests.post(
+                    url,
+                    headers={"Content-Type": "application/json"},
+                    json={
+                        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                        "generationConfig": {"maxOutputTokens": 500, "temperature": 0.3}
+                    },
+                    timeout=20
+                )
+                if resp.status_code == 200:
+                    result = resp.json()
+                    if result.get("candidates"):
+                        raw = result["candidates"][0]["content"]["parts"][0]["text"]
+                        raw = raw.strip()
+                        if raw.startswith("```"):
+                            raw = re.sub(r'^```(?:json)?\s*', '', raw)
+                            raw = re.sub(r'\s*```$', '', raw)
+                        parsed = json.loads(raw)
+                        sentiment = parsed.get("sentiment", "neutral").lower()
+                        islamic = parsed.get("islamic", "nafsani").lower()
+                        meaning = parsed.get("meaning", "Dream interpretation could not be generated.")
+                        if sentiment not in ("positive", "negative", "neutral"):
+                            sentiment = "neutral"
+                        if islamic not in ("rehmani", "shaitani", "nafsani"):
+                            islamic = "nafsani"
+                        return sentiment, islamic, meaning
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+                continue
+            except (json.JSONDecodeError, KeyError, IndexError):
+                continue
+
+        print("⚠️  Gemini API failed for dream analysis, using fallback")
+        return analyze_dream_fallback(text)
+
+    except Exception as e:
+        print(f"⚠️  Dream analysis AI error: {e}")
+        return analyze_dream_fallback(text)
+
+
+def analyze_dream_fallback(text):
+    """Keyword-based fallback when Gemini API is unavailable."""
     clean = clean_text(text)
-    if sentiment_model:
-        sentiment = sentiment_model.predict([clean])[0]
-    else:
-        sentiment = "neutral"
-    if islamic_model:
-        islamic = islamic_model.predict([clean])[0]
-    else:
-        islamic = "nafsani"
-    meaning = f"This dream reflects {sentiment} emotions and {islamic} influence."
+    positive_words = {'happy', 'peace', 'angel', 'light', 'prayer', 'mosque', 'heaven', 'beautiful', 'blessed', 'flying', 'garden', 'paradise', 'success', 'love', 'joy'}
+    negative_words = {'scary', 'dark', 'monster', 'death', 'snake', 'fire', 'falling', 'chasing', 'fear', 'crying', 'blood', 'demon', 'evil', 'nightmare', 'drowning'}
+    rehmani_words = {'prayer', 'mosque', 'quran', 'prophet', 'allah', 'angel', 'heaven', 'jannah', 'blessing', 'guidance', 'mercy', 'iman', 'faith', 'kaaba', 'hadith'}
+    shaitani_words = {'devil', 'satan', 'demon', 'evil', 'sin', 'haram', 'magic', 'witch', 'fire', 'hell', 'temptation', 'curse', 'darkness', 'shaitan', 'sorcery'}
+    words = set(clean.split())
+    pos = len(words & positive_words)
+    neg = len(words & negative_words)
+    reh = len(words & rehmani_words)
+    sha = len(words & shaitani_words)
+    sentiment = "positive" if pos > neg else ("negative" if neg > pos else "neutral")
+    islamic = "rehmani" if reh > sha else ("shaitani" if sha > reh else "nafsani")
+    meaning = f"This dream reflects {sentiment} emotions with {islamic} spiritual influence. Consider reflecting on its themes through prayer and contemplation."
     return sentiment, islamic, meaning
 
 # ─── Routes ──────────────────────────────────────────────────────────────────
@@ -308,9 +383,8 @@ def dream_analyzer():
     if not dream_text:
         return jsonify({"error": "Dream text is required"}), 400
     try:
-        sentiment, islamic, meaning = analyze_dream_ml(dream_text)
+        sentiment, islamic, meaning = analyze_dream_with_ai(dream_text)
         
-        # Save to database if connected
         if conn:
             try:
                 with conn.cursor() as cursor:
@@ -381,7 +455,6 @@ def chatbot():
 
     try:
         model_name = "gemini-2.0-flash"
-        # Try v1 endpoint first, then v1beta
         endpoints = [
             f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent?key={GEMINI_API_KEY}",
             f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={GEMINI_API_KEY}"
@@ -404,24 +477,27 @@ def chatbot():
                         return jsonify({"reply": bot_reply})
                 
                 last_error = f"Status {response.status_code}: {response.text}"
+            except requests.exceptions.ConnectionError as e:
+                last_error = f"ConnectionError: {str(e)}"
+                continue
+            except requests.exceptions.Timeout as e:
+                last_error = f"Timeout: {str(e)}"
+                continue
             except Exception as e:
                 last_error = str(e)
                 continue
 
-        # If we reach here, both failed
         if "404" in last_error:
-            return jsonify({"error": f"Gemini API returned 404 for model '{model_name}'. This usually means your API key is invalid or the model is not enabled for your project. Key being used: {masked_key}"}), 503
+            return jsonify({"error": f"Gemini API returned 404 for model '{model_name}'. API key may be invalid or model not enabled. Key: {masked_key}"}), 503
         elif "403" in last_error:
             return jsonify({"error": f"Gemini API returned 403 (Forbidden). Your key ({masked_key}) might be blocked or restricted."}), 503
+        elif "ConnectionError" in last_error:
+            return jsonify({"error": "Internet connection issue. Gemini API is not reachable. Please check your internet."}), 503
+        elif "Timeout" in last_error:
+            return jsonify({"error": "Gemini API request timed out. Please try again."}), 503
             
         return jsonify({"error": f"Gemini API Error: {last_error}"}), 503
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-    except requests.exceptions.ConnectionError:
-        return jsonify({"error": "Internet connection check . Gemini API is not connecting ."}), 503
-    except requests.exceptions.Timeout:
-        return jsonify({"error": "Gemini API timeout .  try again."}), 503
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -442,14 +518,13 @@ def send_mental_health_alert():
     if not to_email:
         return jsonify({"error": "Email address required hai"}), 400
 
-    # If email not configured, still return success (app works, just no email)
-    if EMAIL_SENDER == "fataekim2601@gmail.com" or EMAIL_PASSWORD == "kim2601@":
-        print(f"⚠️  Email not configured — would have sent alert to {to_email}")
+    if not EMAIL_SENDER or not EMAIL_PASSWORD:
+        print(f"⚠️  Email credentials not set — cannot send alert to {to_email}")
         return jsonify({
-            "success": True,
-            "message": "Alert recorded! (Email server configured nahi hai abhi)",
+            "success": False,
+            "error": "Email credentials not configured on server",
             "email_sent": False
-        })
+        }), 500
 
     try:
         msg            = EmailMessage()

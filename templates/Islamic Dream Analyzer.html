@@ -1145,9 +1145,9 @@
                         <h1 id="welcomeUserName">Welcome, User!</h1>
                         <p>Explore the spiritual meaning behind your dreams</p>
                     </div>
-                    <div class="notification-badge" onclick="showNotification()">
+                    <div class="notification-badge" onclick="toggleNotificationPanel()">
                         <span>🔔</span>
-                        <div class="badge">3</div>
+                        <div class="badge" id="notificationBadge" style="display:none;">0</div>
                     </div>
                 </div>
             </div>
@@ -1446,13 +1446,22 @@
         </div>
     </div>
 
-    <!-- Notification Popup -->
+    <!-- Toast Notification (brief messages) -->
     <div id="notificationPopup" class="notification-popup">
         <button class="close-notification" onclick="hideNotification()">×</button>
         <div class="notification-title">
-            <span>🔔</span> Welcome!
+            <span>🔔</span> Notification
         </div>
-        <div class="notification-message" id="notificationMessage">Welcome to Islamic Dream Analyzer! Start exploring your dreams now.</div>
+        <div class="notification-message" id="notificationMessage"></div>
+    </div>
+
+    <!-- Notification Panel (full list) -->
+    <div id="notificationPanel" style="position:fixed;top:80px;right:30px;width:360px;max-height:450px;background:#fff;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,0.2);z-index:1600;display:none;overflow:hidden;">
+        <div style="padding:15px 20px;background:var(--primary);color:#fff;display:flex;justify-content:space-between;align-items:center;">
+            <strong>🔔 Notifications</strong>
+            <button onclick="clearAllNotifications()" style="background:rgba(255,255,255,0.2);border:none;color:#fff;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:12px;">Clear All</button>
+        </div>
+        <div id="notificationList" style="max-height:350px;overflow-y:auto;padding:10px;"></div>
     </div>
 
     <script>
@@ -1574,21 +1583,23 @@
 
         // Module Navigation
         function showModule(moduleName) {
-            // Remove active class from all modules
             document.querySelectorAll('.module-item').forEach(item => {
                 item.classList.remove('active');
             });
             
-            // Add active class to clicked module
             event.currentTarget.classList.add('active');
             
-            // Hide all module contents
             document.querySelectorAll('.module-content').forEach(content => {
                 content.classList.remove('active');
             });
             
-            // Show selected module content
             document.getElementById(moduleName).classList.add('active');
+
+            if (moduleName === 'dreamTracker') {
+                loadTrackerData();
+            } else if (moduleName === 'dreamDiary') {
+                loadDiaryEntries();
+            }
         }
 
         function logout() {
@@ -1601,7 +1612,7 @@
             }
         }
 
-        // Dream Analyzer Functionality - COMPLETELY FIXED
+        // Dream Analyzer Functionality - Uses Gemini AI API
         document.getElementById('dreamAnalysisForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             const dreamText = document.getElementById('dreamDescription').value.trim();
@@ -1611,9 +1622,18 @@
                 showNotification('Please enter a dream description!');
                 return;
             }
+
+            // Show loading state
+            const submitBtn = this.querySelector('button[type="submit"]');
+            const originalBtnText = submitBtn.innerHTML;
+            submitBtn.innerHTML = '<span>⏳</span> Analyzing with AI...';
+            submitBtn.disabled = true;
             
-            // Analyze dream
-            const analysis = analyzeDream(dreamText);
+            // Call backend API for AI-powered analysis
+            const analysis = await analyzeDream(dreamText);
+            
+            submitBtn.innerHTML = originalBtnText;
+            submitBtn.disabled = false;
             
             // Display results
             document.getElementById('dreamMeaning').innerHTML = analysis.meaning;
@@ -1636,185 +1656,68 @@
             };
             
             if (editId) {
-                // Update existing dream
-                await saveToTracker(dreamData); // saveToTracker handles both new and updates now
+                await saveToTracker(dreamData);
                 document.getElementById('editDreamId').value = '';
                 showNotification('Dream updated successfully!');
             } else {
-                // Save new dream
                 await saveToTracker(dreamData);
                 showNotification('Dream analyzed and saved successfully!');
             }
+            
+            addNotificationItem('Dream analyzed: ' + dreamText.substring(0, 50) + '...');
             
             // Clear the form
             document.getElementById('dreamDescription').value = '';
         });
 
-        function analyzeDream(dreamText) {
-            // Comprehensive keyword lists
-            const positiveWords = [
-                'happy', 'beautiful', 'peace', 'peaceful', 'angel', 'success', 'win', 'love', 'heaven',
-                'joy', 'flying', 'smiling', 'laugh', 'laughter', 'bless', 'blessing', 'light', 'bright',
-                'flowers', 'garden', 'paradise', 'reward', 'victory', 'achievement', 'achieving',
-                'smile', 'happiness', 'calm', 'serene', 'beauty', 'kindness', 'generous', 'generosity',
-                'helping', 'helped', 'save', 'saved', 'rescued', 'gift', 'prize', 'winner', 'winning',
-                'wealth', 'rich', 'money', 'gold', 'silver', 'jewel', 'jewels', 'treasure', 'happiness',
-                'successful', 'progress', 'improve', 'improving', 'growth', 'growing', 'healthy', 'health',
-                'clear', 'clean', 'pure', 'purity', 'truth', 'true', 'honest', 'honesty', 'good', 'goodness',
-                'positive', 'optimistic', 'hope', 'hopeful', 'faith', 'faithful', 'trust', 'trusting',
-                'friend', 'friends', 'family', 'mother', 'father', 'child', 'children', 'baby', 'babies',
-                'wedding', 'marriage', 'married', 'bride', 'groom', 'celebrate', 'celebration', 'party',
-                'food', 'eating', 'drinking', 'water', 'river', 'lake', 'ocean', 'sea', 'mountain', 'mountains',
-                'forest', 'trees', 'green', 'greenery', 'bird', 'birds', 'butterfly', 'butterflies', 'flower',
-                'sun', 'sunshine', 'moon', 'stars', 'star', 'sky', 'blue', 'white', 'cloud', 'clouds'
-            ];
-            
-            const negativeWords = [
-                'scary', 'scared', 'fear', 'fearful', 'dark', 'darkness', 'monster', 'monsters', 'devil',
-                'death', 'dead', 'dying', 'hell', 'lost', 'lose', 'losing', 'falling', 'fell', 'fall',
-                'chasing', 'chased', 'running', 'ran', 'fighting', 'fight', 'fought', 'crying', 'cry',
-                'sad', 'sadness', 'pain', 'painful', 'hurt', 'hurting', 'blood', 'bleeding', 'danger',
-                'dangerous', 'attack', 'attacked', 'snake', 'snakes', 'spider', 'spiders', 'ghost', 'ghosts',
-                'demon', 'demons', 'evil', 'trapped', 'trap', 'drowning', 'drown', 'fire', 'burning', 'burn',
-                'terror', 'terrorist', 'horror', 'nightmare', 'frightening', 'frightened', 'anxious', 'anxiety',
-                'worried', 'worry', 'stress', 'stressed', 'tension', 'tense', 'angry', 'anger', 'mad',
-                'frustrated', 'frustration', 'confused', 'confusion', 'lost', 'losing', 'fail', 'failed',
-                'failure', 'broken', 'break', 'breaking', 'sick', 'sickness', 'ill', 'illness', 'disease',
-                'poison', 'poisonous', 'toxic', 'virus', 'bacteria', 'germ', 'germs', 'pain', 'ache',
-                'headache', 'stomachache', 'toothache', 'accident', 'crash', 'crashed', 'car', 'vehicle',
-                'police', 'thief', 'steal', 'stolen', 'rob', 'robbed', 'gun', 'weapon', 'knife', 'sword',
-                'war', 'battle', 'soldier', 'army', 'enemy', 'enemies', 'hate', 'hatred', 'jealous', 'jealousy',
-                'envy', 'envious', 'pride', 'proud', 'arrogant', 'arrogance', 'greed', 'greedy', 'selfish',
-                'lonely', 'loneliness', 'alone', 'abandoned', 'abandon', 'reject', 'rejected', 'rejection'
-            ];
-            
-            const rehmaniWords = [
-                'prayer', 'praying', 'prayed', 'mosque', 'masjid', 'quran', 'koran', 'prophet', 'muhammad',
-                'allah', 'god', 'angel', 'angels', 'light', 'peace', 'heaven', 'jannah', 'paradise',
-                'bless', 'blessing', 'blessings', 'guidance', 'guided', 'mercy', 'merciful', 'forgiveness',
-                'forgive', 'forgiven', 'iman', 'faith', 'belief', 'believer', 'muslim', 'islam', 'islamic',
-                'good deed', 'good deeds', 'charity', 'charitable', 'zakat', 'sadaqah', 'helping', 'helped',
-                'kindness', 'kind', 'truth', 'true', 'honesty', 'honest', 'patience', 'patient', 'gratitude',
-                'thankful', 'thanks', 'thank', 'grateful', 'pious', 'piety', 'righteous', 'righteousness',
-                'virtue', 'virtuous', 'moral', 'morality', 'ethics', 'ethical', 'clean', 'pure', 'purity',
-                'cleanliness', 'ablution', 'wudu', 'fasting', 'fast', 'ramadan', 'hajj', 'umrah', 'pilgrimage',
-                'pilgrim', 'kaaba', 'mecca', 'medina', 'jerusalem', 'al-aqsa', 'mosques', 'imam', 'scholar',
-                'knowledge', 'learn', 'learning', 'student', 'teacher', 'teaching', 'wisdom', 'wise',
-                'book', 'books', 'reading', 'read', 'recite', 'reciting', 'verse', 'verses', 'surah', 'ayah',
-                'hadith', 'sunna', 'sunnah', 'tradition', 'traditions', 'saint', 'saints', 'soul', 'spirit',
-                'spiritual', 'spirituality', 'heart', 'mind', 'conscious', 'consciousness', 'aware', 'awareness'
-            ];
-            
-            const shaitaniWords = [
-                'devil', 'devils', 'satan', 'shaitan', 'shaytan', 'demon', 'demons', 'evil', 'sin', 'sins',
-                'sinful', 'darkness', 'dark', 'fire', 'hell', 'jahannam', 'temptation', 'tempt', 'tempted',
-                'witch', 'witches', 'magic', 'sorcery', 'sorcerer', 'haram', 'forbidden', 'prohibited',
-                'lying', 'lie', 'liar', 'cheating', 'cheat', 'cheater', 'stealing', 'steal', 'thief', 'thieves',
-                'anger', 'angry', 'hatred', 'hate', 'jealousy', 'jealous', 'envy', 'envious', 'pride', 'proud',
-                'arrogant', 'arrogance', 'backbiting', 'gossip', 'gossiping', 'betrayal', 'betray', 'betrayed',
-                'deception', 'deceive', 'deceived', 'false', 'falseness', 'fake', 'fraud', 'fraudulent',
-                'corrupt', 'corruption', 'bribe', 'bribery', 'usury', 'interest', 'riba', 'alcohol', 'wine',
-                'drug', 'drugs', 'intoxicant', 'intoxicants', 'gambling', 'gamble', 'gambler', 'lust', 'lustful',
-                'desire', 'desires', 'greed', 'greedy', 'selfish', 'selfishness', 'hypocrite', 'hypocrisy',
-                'hypocritical', 'disbelief', 'disbeliever', 'kafir', 'kuffar', 'idol', 'idols', 'idolatry',
-                'statue', 'statues', 'grave', 'graves', 'worship', 'worshipping', 'worshipped', 'false god',
-                'idol worship', 'magician', 'sorceress', 'witchcraft', 'black magic', 'voodoo', 'occult',
-                'satanic', 'demonic', 'possessed', 'possession', 'exorcism', 'exorcist', 'curse', 'cursed',
-                'damn', 'damned', 'hellfire', 'punishment', 'punish', 'punished', 'torment', 'tormented',
-                'torture', 'tortured', 'suffering', 'suffer', 'suffered', 'pain', 'painful', 'agony', 'agonizing'
-            ];
-            
+        async function analyzeDream(dreamText) {
+            try {
+                const response = await fetch('/analyze-dream', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ dream_text: dreamText })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    return {
+                        sentiment: data.sentiment || 'neutral',
+                        islamic: data.islamic_analysis || 'nafsani',
+                        meaning: data.meaning || 'Analysis could not be generated.'
+                    };
+                }
+            } catch (error) {
+                console.error('API dream analysis failed, using fallback:', error);
+            }
+            return analyzeDreamFallback(dreamText);
+        }
+
+        function analyzeDreamFallback(dreamText) {
+            const positiveWords = ['happy','beautiful','peace','angel','success','love','heaven','joy','flying','blessing','light','garden','paradise','prayer','mosque'];
+            const negativeWords = ['scary','dark','monster','death','snake','fire','falling','fear','crying','blood','demon','evil','nightmare','drowning','chasing'];
+            const rehmaniWords = ['prayer','mosque','quran','prophet','allah','angel','heaven','jannah','blessing','guidance','mercy','faith','kaaba','hadith','iman'];
+            const shaitaniWords = ['devil','satan','demon','evil','sin','haram','magic','witch','fire','hell','temptation','curse','darkness','shaitan','sorcery'];
             const textLower = dreamText.toLowerCase();
-            
-            // Count occurrences
-            let positiveCount = 0;
-            let negativeCount = 0;
-            let rehmaniCount = 0;
-            let shaitaniCount = 0;
-            
-            // Check positive words
-            positiveWords.forEach(word => {
-                if (textLower.includes(word)) {
-                    positiveCount++;
-                }
-            });
-            
-            // Check negative words
-            negativeWords.forEach(word => {
-                if (textLower.includes(word)) {
-                    negativeCount++;
-                }
-            });
-            
-            // Check rehmani words
-            rehmaniWords.forEach(word => {
-                if (textLower.includes(word)) {
-                    rehmaniCount++;
-                }
-            });
-            
-            // Check shaitani words
-            shaitaniWords.forEach(word => {
-                if (textLower.includes(word)) {
-                    shaitaniCount++;
-                }
-            });
-            
-            // Determine sentiment
-            let sentiment = 'neutral';
-            if (positiveCount > negativeCount) {
-                sentiment = 'positive';
-            } else if (negativeCount > positiveCount) {
-                sentiment = 'negative';
-            }
-            
-            // Determine Islamic analysis
-            let islamic = 'nafsani';
-            if (rehmaniCount > shaitaniCount) {
-                islamic = 'rehmani';
-            } else if (shaitaniCount > rehmaniCount) {
-                islamic = 'shaitani';
-            }
-            
-            // Generate meaning based on analysis
-            let meaning = "";
-            
-            if (sentiment === 'positive' && islamic === 'rehmani') {
-                meaning = "🌿 This is a very positive and spiritually significant dream! It indicates divine blessings, success, and spiritual growth in your life. Such dreams are considered good omens in Islamic tradition.";
-            } else if (sentiment === 'positive' && islamic === 'shaitani') {
-                meaning = "⚠️ This dream appears positive but may contain subtle negative influences. Be cautious of temptations appearing as good things. Seek protection through prayers and good deeds.";
-            } else if (sentiment === 'positive' && islamic === 'nafsani') {
-                meaning = "💭 This positive dream reflects your inner desires, hopes, and aspirations. It shows optimism for the future and indicates personal growth and satisfaction.";
-            } else if (sentiment === 'negative' && islamic === 'rehmani') {
-                meaning = "🕌 This negative dream may be a spiritual warning or test from Allah. It suggests you need to strengthen your faith, increase prayers, and seek protection from negative influences.";
-            } else if (sentiment === 'negative' && islamic === 'shaitani') {
-                meaning = "🔥 This is a warning dream! It indicates strong negative influences or shaitani whispers. Seek protection through prayers, recite Ayat-ul-Kursi and the last three Surahs of Quran before sleeping.";
-            } else if (sentiment === 'negative' && islamic === 'nafsani') {
-                meaning = "😔 This negative dream reflects your fears, anxieties, stress, or unresolved issues in your waking life. It may indicate the need for emotional healing and stress management.";
-            } else if (sentiment === 'neutral' && islamic === 'rehmani') {
-                meaning = "📖 This dream has spiritual elements. It reflects your connection with faith and may contain subtle guidance or reminders about your spiritual duties.";
-            } else if (sentiment === 'neutral' && islamic === 'shaitani') {
-                meaning = "👁️ This neutral dream may contain hidden negative influences. Stay alert to your surroundings and maintain your spiritual practices for protection.";
-            } else {
-                meaning = "🧠 This dream reflects your daily thoughts, experiences, and subconscious mind. It's a normal reflection of your mental processes and doesn't carry significant spiritual meaning.";
-            }
-            
-            // Add details based on word counts
-            if (positiveCount > 0 || negativeCount > 0 || rehmaniCount > 0 || shaitaniCount > 0) {
-                meaning += `<br><br><small style="color: #666; font-size: 12px;">Analysis based on: ${positiveCount} positive, ${negativeCount} negative, ${rehmaniCount} spiritual, ${shaitaniCount} negative-spiritual keywords found.</small>`;
-            }
-            
-            return {
-                sentiment: sentiment,
-                islamic: islamic,
-                meaning: meaning,
-                scores: {
-                    positive: positiveCount,
-                    negative: negativeCount,
-                    rehmani: rehmaniCount,
-                    shaitani: shaitaniCount
-                }
+            let pC=0, nC=0, rC=0, sC=0;
+            positiveWords.forEach(w => { if(textLower.includes(w)) pC++; });
+            negativeWords.forEach(w => { if(textLower.includes(w)) nC++; });
+            rehmaniWords.forEach(w => { if(textLower.includes(w)) rC++; });
+            shaitaniWords.forEach(w => { if(textLower.includes(w)) sC++; });
+            const sentiment = pC > nC ? 'positive' : (nC > pC ? 'negative' : 'neutral');
+            const islamic = rC > sC ? 'rehmani' : (sC > rC ? 'shaitani' : 'nafsani');
+            const meanings = {
+                'positive-rehmani': "🌿 This is a very positive and spiritually significant dream! It indicates divine blessings and spiritual growth.",
+                'positive-shaitani': "⚠️ This dream appears positive but may contain subtle negative influences. Seek protection through prayers.",
+                'positive-nafsani': "💭 This positive dream reflects your inner desires, hopes, and aspirations.",
+                'negative-rehmani': "🕌 This dream may be a spiritual warning. Strengthen your faith and increase prayers.",
+                'negative-shaitani': "🔥 Warning dream! Recite Ayat-ul-Kursi and the last three Surahs before sleeping.",
+                'negative-nafsani': "😔 This reflects your fears or stress. Consider emotional healing and stress management.",
+                'neutral-rehmani': "📖 This dream has spiritual elements reflecting your connection with faith.",
+                'neutral-shaitani': "👁️ This dream may contain hidden negative influences. Maintain spiritual practices.",
+                'neutral-nafsani': "🧠 This dream reflects your daily thoughts and subconscious mind."
             };
+            const meaning = meanings[`${sentiment}-${islamic}`] || meanings['neutral-nafsani'];
+            return { sentiment, islamic, meaning };
         }
 
         // Pattern Correlation Functionality - COMPLETELY FIXED
@@ -1938,7 +1841,7 @@
             // Save each dream to tracker and diary
             for (let index = 0; index < patternData.dreams.length; index++) {
                 const dream = patternData.dreams[index];
-                const dreamAnalysis = analyzeDream(dream.description);
+                const dreamAnalysis = await analyzeDream(dream.description);
                 const dreamData = {
                     id: Date.now() + index,
                     dream: dream.description,
@@ -2419,6 +2322,7 @@
             if (consecutiveNegative <= lastAlertCount) return;
 
             // Show in-app alert first
+            addNotificationItem(`⚠️ Mental Health Alert: ${consecutiveNegative} consecutive negative dreams detected!`);
             showNotification(`⚠️ Mental Health Alert: Aap ne ${consecutiveNegative} consecutive negative dreams record kiye hain. Please apna khayal rakhein!`);
 
             // Mark as alerted
@@ -2689,11 +2593,11 @@
         }
 
         // Notification System
+        let notificationItems = JSON.parse(localStorage.getItem('notificationItems') || '[]');
+
         function showNotification(message) {
             document.getElementById('notificationMessage').textContent = message;
             document.getElementById('notificationPopup').classList.add('show');
-            
-            // Auto hide after 5 seconds
             setTimeout(hideNotification, 5000);
         }
 
@@ -2702,21 +2606,85 @@
         }
 
         function toggleNotification() {
-            const popup = document.getElementById('notificationPopup');
-            if (popup.classList.contains('show')) {
-                hideNotification();
+            toggleNotificationPanel();
+        }
+
+        function toggleNotificationPanel() {
+            const panel = document.getElementById('notificationPanel');
+            if (panel.style.display === 'none' || !panel.style.display) {
+                renderNotificationList();
+                panel.style.display = 'block';
+                markNotificationsRead();
             } else {
-                showNotification('Check your notifications here!');
+                panel.style.display = 'none';
             }
         }
 
-        function showWelcomeNotification(userName) {
-            document.getElementById('notificationMessage').textContent = `Welcome back, ${userName}! Ready to explore your dreams?`;
-            document.getElementById('notificationPopup').classList.add('show');
-            
-            // Auto hide after 5 seconds
-            setTimeout(hideNotification, 5000);
+        function addNotificationItem(message) {
+            const item = {
+                id: Date.now(),
+                message: message,
+                time: new Date().toISOString(),
+                read: false
+            };
+            notificationItems.unshift(item);
+            if (notificationItems.length > 20) notificationItems = notificationItems.slice(0, 20);
+            localStorage.setItem('notificationItems', JSON.stringify(notificationItems));
+            updateNotificationBadge();
         }
+
+        function updateNotificationBadge() {
+            const unread = notificationItems.filter(n => !n.read).length;
+            const badge = document.getElementById('notificationBadge');
+            if (unread > 0) {
+                badge.textContent = unread > 9 ? '9+' : unread;
+                badge.style.display = 'flex';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+
+        function markNotificationsRead() {
+            notificationItems.forEach(n => n.read = true);
+            localStorage.setItem('notificationItems', JSON.stringify(notificationItems));
+            updateNotificationBadge();
+        }
+
+        function renderNotificationList() {
+            const container = document.getElementById('notificationList');
+            if (notificationItems.length === 0) {
+                container.innerHTML = '<div style="text-align:center;padding:30px;color:#999;">No notifications yet</div>';
+                return;
+            }
+            container.innerHTML = notificationItems.map(n => {
+                const time = new Date(n.time);
+                const timeStr = time.toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+                return `<div style="padding:10px 12px;border-bottom:1px solid #f0f0f0;${n.read ? '' : 'background:#f0f9ff;'}">
+                    <div style="font-size:13px;color:#333;">${n.message}</div>
+                    <div style="font-size:11px;color:#999;margin-top:4px;">${timeStr}</div>
+                </div>`;
+            }).join('');
+        }
+
+        function clearAllNotifications() {
+            notificationItems = [];
+            localStorage.setItem('notificationItems', JSON.stringify(notificationItems));
+            updateNotificationBadge();
+            renderNotificationList();
+        }
+
+        function showWelcomeNotification(userName) {
+            addNotificationItem(`Welcome back, ${userName}! Ready to explore your dreams?`);
+            showNotification(`Welcome back, ${userName}! Ready to explore your dreams?`);
+        }
+
+        document.addEventListener('click', function(e) {
+            const panel = document.getElementById('notificationPanel');
+            const badge = document.querySelector('.notification-badge');
+            if (panel.style.display === 'block' && !panel.contains(e.target) && !badge.contains(e.target)) {
+                panel.style.display = 'none';
+            }
+        });
 
         // Initialize sample data
         document.addEventListener('DOMContentLoaded', function() {
@@ -2809,6 +2777,7 @@
             // Initialize data displays
             loadTrackerData();
             loadDiaryEntries();
+            updateNotificationBadge();
         });
     </script>
 </body>
