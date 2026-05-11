@@ -48,10 +48,14 @@ def get_user_by_email(email):
         cursor.execute("SELECT id, name, email, password_hash FROM users WHERE email = %s", (email,))
         return cursor.fetchone()
 
+def get_gemini_key():
+    key = os.environ.get("GEMINI_API_KEY", "").strip()
+    return key if key else None
+
 # ─── Dream Analyzer (Gemini AI-powered) ──────────────────────────────────────
 def analyze_dream_with_ai(text):
     """Analyze dream using Gemini API for meaningful interpretation."""
-    api_key = os.environ.get("GEMINI_API_KEY")
+    api_key = get_gemini_key()
     if not api_key:
         return analyze_dream_fallback(text)
 
@@ -403,8 +407,6 @@ def dream_analyzer():
 
 # ─── AI Chatbot (Gemini API) ──────────────────────────────────────────────────
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-
 @app.route("/chatbot", methods=["POST"])
 def chatbot():
     data = request.json
@@ -414,9 +416,10 @@ def chatbot():
     if not user_message:
         return jsonify({"error": "Message is required"}), 400
 
-    if GEMINI_API_KEY == "I was in deep water and struggling to stay above the surface" or not GEMINI_API_KEY:
+    GEMINI_API_KEY = get_gemini_key()
+    if not GEMINI_API_KEY:
         return jsonify({
-            "error": " GEMINI_API_KEY not working "
+            "error": "GEMINI_API_KEY is not configured on the server."
         }), 503
 
     SYSTEM_PROMPT = (
