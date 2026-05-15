@@ -1670,12 +1670,12 @@
             document.getElementById('dreamDescription').value = '';
         });
 
-        async function analyzeDream(dreamText) {
+        async function analyzeDream(dreamText, dreamType = null) {
             try {
                 const response = await fetch('/analyze-dream', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ dream_text: dreamText })
+                    body: JSON.stringify({ dream_text: dreamText, dream_type: dreamType })
                 });
 
                 if (response.ok) {
@@ -1689,32 +1689,34 @@
             } catch (error) {
                 console.error('API dream analysis failed, using fallback:', error);
             }
-            return analyzeDreamFallback(dreamText);
+            return analyzeDreamFallback(dreamText, dreamType);
         }
 
-        function analyzeDreamFallback(dreamText) {
-            const positiveWords = ['happy','beautiful','peace','angel','success','love','heaven','joy','flying','blessing','light','garden','paradise','prayer','mosque'];
-            const negativeWords = ['scary','dark','monster','death','snake','fire','falling','fear','crying','blood','demon','evil','nightmare','drowning','chasing'];
-            const rehmaniWords = ['prayer','mosque','quran','prophet','allah','angel','heaven','jannah','blessing','guidance','mercy','faith','kaaba','hadith','iman'];
-            const shaitaniWords = ['devil','satan','demon','evil','sin','haram','magic','witch','fire','hell','temptation','curse','darkness','shaitan','sorcery'];
+        function analyzeDreamFallback(dreamText, dreamType = null) {
+            const positiveWords = ['happy','beautiful','peace','peaceful','angel','success','love','heaven','joy','flying','blessing','light','garden','paradise','prayer','mosque','masjid','calm','safe','khushi','sukoon','aman','noor','jannat','rehmat','barkat','farishta','dua','namaz','muhabbat','kamyabi'];
+            const negativeWords = ['scary','scared','dark','monster','death','snake','fire','falling','fear','afraid','crying','blood','demon','evil','nightmare','drowning','chasing','hurt','pain','war','hell','devil','shaitan','ghost','dar','darr','andhera','saanp','aag','maut','khoon','pareshan','azab','dukh','ghum','bura','kharab'];
+            const rehmaniWords = ['prayer','mosque','masjid','quran','prophet','allah','angel','heaven','jannah','blessing','guidance','mercy','faith','kaaba','hadith','iman','namaz','dua','noor','rehmat','barkat','farishta'];
+            const shaitaniWords = ['devil','satan','demon','evil','sin','haram','magic','witch','hell','temptation','curse','darkness','shaitan','jinn','ghost','nightmare','shaitani','azab','jahannam'];
             const textLower = dreamText.toLowerCase();
             let pC=0, nC=0, rC=0, sC=0;
             positiveWords.forEach(w => { if(textLower.includes(w)) pC++; });
             negativeWords.forEach(w => { if(textLower.includes(w)) nC++; });
             rehmaniWords.forEach(w => { if(textLower.includes(w)) rC++; });
             shaitaniWords.forEach(w => { if(textLower.includes(w)) sC++; });
+            if (dreamType === 'nightmare' && pC === nC) { nC += 2; sC += 1; }
+            if (dreamType === 'prophetic' && pC === nC) { pC += 2; rC += 2; }
             const sentiment = pC > nC ? 'positive' : (nC > pC ? 'negative' : 'neutral');
             const islamic = rC > sC ? 'rehmani' : (sC > rC ? 'shaitani' : 'nafsani');
             const meanings = {
-                'positive-rehmani': "🌿 This is a very positive and spiritually significant dream! It indicates divine blessings and spiritual growth.",
-                'positive-shaitani': "⚠️ This dream appears positive but may contain subtle negative influences. Seek protection through prayers.",
-                'positive-nafsani': "💭 This positive dream reflects your inner desires, hopes, and aspirations.",
-                'negative-rehmani': "🕌 This dream may be a spiritual warning. Strengthen your faith and increase prayers.",
-                'negative-shaitani': "🔥 Warning dream! Recite Ayat-ul-Kursi and the last three Surahs before sleeping.",
-                'negative-nafsani': "😔 This reflects your fears or stress. Consider emotional healing and stress management.",
-                'neutral-rehmani': "📖 This dream has spiritual elements reflecting your connection with faith.",
-                'neutral-shaitani': "👁️ This dream may contain hidden negative influences. Maintain spiritual practices.",
-                'neutral-nafsani': "🧠 This dream reflects your daily thoughts and subconscious mind."
+                'positive-rehmani': "🌿 Bohat acha roohani khwab! Allah ki rehmat, hidayat aur barkat ki nishani hai.",
+                'positive-shaitani': "⚠️ Khwab acha lagta hai lekin chupi hui pareshani ho sakti hai — sone se pehle Ayat-ul-Kursi parhein.",
+                'positive-nafsani': "💭 Yeh khwab aap ki umeed aur khushi ko dikhata hai.",
+                'negative-rehmani': "🕌 Roohani ishara — tawba, namaz aur dua mein izafa karein.",
+                'negative-shaitani': "🔥 Khaufnaak khwab! Teen Qul aur Ayat-ul-Kursi parhein, daein karvat son.",
+                'negative-nafsani': "😔 Zehni dabao ya khauf ki nishani — apne masail par ghor karein.",
+                'neutral-rehmani': "📖 Iman aur zindagi ke faislon par ghor karne ka ishara.",
+                'neutral-shaitani': "👁️ Chupi hui pareshani — zyada dhikr aur Quran se madad lein.",
+                'neutral-nafsani': "🧠 Roz marra ke khayalat aur zehni halat ko dikhata hai."
             };
             const meaning = meanings[`${sentiment}-${islamic}`] || meanings['neutral-nafsani'];
             return { sentiment, islamic, meaning };
@@ -1841,7 +1843,7 @@
             // Save each dream to tracker and diary
             for (let index = 0; index < patternData.dreams.length; index++) {
                 const dream = patternData.dreams[index];
-                const dreamAnalysis = await analyzeDream(dream.description);
+                const dreamAnalysis = await analyzeDream(dream.description, dream.type);
                 const dreamData = {
                     id: Date.now() + index,
                     dream: dream.description,

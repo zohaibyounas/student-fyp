@@ -1,0 +1,28 @@
+# Secrets & local config — never push
+.env
+.env.*
+!.env.example
+
+# Local run scripts (may contain API keys / DB URLs)
+*.bat
+run_with_db.bat
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Optional: large ML models (uncomment if you don't want them on GitHub)
+# models/*.pkl

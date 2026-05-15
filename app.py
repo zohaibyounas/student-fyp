@@ -10,6 +10,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 load_dotenv()
 from config import conn
+from utils.dream_analysis import analyze_dream as run_dream_analysis
 
 app = Flask(__name__)
 
@@ -54,95 +55,7 @@ def get_gemini_key():
     key = os.environ.get("GEMINI_API_KEY", "").strip()
     return key if key else None
 
-# ─── Dream Analyzer (Gemini AI-powered) ──────────────────────────────────────
-def analyze_dream_with_ai(text):
-    """Analyze dream using Gemini API for meaningful interpretation."""
-    api_key = get_gemini_key()
-    if not api_key:
-        return analyze_dream_fallback(text)
-
-    prompt = (
-        "You are an expert Islamic dream interpreter. Analyze this dream and return ONLY a valid JSON object (no markdown, no extra text).\n\n"
-        f"Dream: \"{text}\"\n\n"
-        "Return JSON with exactly these keys:\n"
-        "{\n"
-        '  "sentiment": "positive" or "negative" or "neutral",\n'
-        '  "islamic": "rehmani" or "shaitani" or "nafsani",\n'
-        '  "meaning": "A detailed 2-3 sentence interpretation based on Islamic sources (Quran, Hadith, Ibn Sirin, Al-Nabulsi). Include the spiritual significance and practical guidance."\n'
-        "}\n\n"
-        "Rules:\n"
-        "- Use authentic Islamic dream interpretation sources\n"
-        "- sentiment must be exactly one of: positive, negative, neutral\n"
-        "- islamic must be exactly one of: rehmani, shaitani, nafsani\n"
-        "- meaning should reference Islamic scholars or Hadith where applicable\n"
-        "- Return ONLY the JSON object, nothing else"
-    )
-
-    try:
-        endpoints = [
-            f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={api_key}",
-            f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
-        ]
-
-        for url in endpoints:
-            try:
-                resp = requests.post(
-                    url,
-                    headers={"Content-Type": "application/json"},
-                    json={
-                        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-                        "generationConfig": {"maxOutputTokens": 500, "temperature": 0.3}
-                    },
-                    timeout=20
-                )
-                if resp.status_code == 200:
-                    result = resp.json()
-                    if result.get("candidates"):
-                        raw = result["candidates"][0]["content"]["parts"][0]["text"]
-                        raw = raw.strip()
-                        if raw.startswith("```"):
-                            raw = re.sub(r'^```(?:json)?\s*', '', raw)
-                            raw = re.sub(r'\s*```$', '', raw)
-                        parsed = json.loads(raw)
-                        sentiment = parsed.get("sentiment", "neutral").lower()
-                        islamic = parsed.get("islamic", "nafsani").lower()
-                        meaning = parsed.get("meaning", "Dream interpretation could not be generated.")
-                        if sentiment not in ("positive", "negative", "neutral"):
-                            sentiment = "neutral"
-                        if islamic not in ("rehmani", "shaitani", "nafsani"):
-                            islamic = "nafsani"
-                        return sentiment, islamic, meaning
-                else:
-                    print(f"DEBUG Dream Analyzer Gemini: Status {resp.status_code}, Response: {resp.text[:500]}")
-            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
-                continue
-            except (json.JSONDecodeError, KeyError, IndexError):
-                continue
-
-        print("⚠️  Gemini API failed for dream analysis, using fallback")
-        return analyze_dream_fallback(text)
-
-    except Exception as e:
-        print(f"⚠️  Dream analysis AI error: {e}")
-        return analyze_dream_fallback(text)
-
-
-def analyze_dream_fallback(text):
-    """Keyword-based fallback when Gemini API is unavailable."""
-    clean = clean_text(text)
-    positive_words = {'happy', 'peace', 'angel', 'light', 'prayer', 'mosque', 'heaven', 'beautiful', 'blessed', 'flying', 'garden', 'paradise', 'success', 'love', 'joy'}
-    negative_words = {'scary', 'dark', 'monster', 'death', 'snake', 'fire', 'falling', 'chasing', 'fear', 'crying', 'blood', 'demon', 'evil', 'nightmare', 'drowning'}
-    rehmani_words = {'prayer', 'mosque', 'quran', 'prophet', 'allah', 'angel', 'heaven', 'jannah', 'blessing', 'guidance', 'mercy', 'iman', 'faith', 'kaaba', 'hadith'}
-    shaitani_words = {'devil', 'satan', 'demon', 'evil', 'sin', 'haram', 'magic', 'witch', 'fire', 'hell', 'temptation', 'curse', 'darkness', 'shaitan', 'sorcery'}
-    words = set(clean.split())
-    pos = len(words & positive_words)
-    neg = len(words & negative_words)
-    reh = len(words & rehmani_words)
-    sha = len(words & shaitani_words)
-    sentiment = "positive" if pos > neg else ("negative" if neg > pos else "neutral")
-    islamic = "rehmani" if reh > sha else ("shaitani" if sha > reh else "nafsani")
-    meaning = f"This dream reflects {sentiment} emotions with {islamic} spiritual influence. Consider reflecting on its themes through prayer and contemplation."
-    return sentiment, islamic, meaning
+# ─── Dream Analyzer ────────────────────────────────────────────────────────────
 
 # ─── Routes ──────────────────────────────────────────────────────────────────
 @app.route("/")
@@ -388,10 +301,17 @@ def delete_user_dream(dream_id):
 def dream_analyzer():
     data = request.json
     dream_text = data.get("dream_text", "").strip()
+    dream_type = data.get("dream_type", "").strip().lower() or None
     if not dream_text:
         return jsonify({"error": "Dream text is required"}), 400
     try:
-        sentiment, islamic, meaning = analyze_dream_with_ai(dream_text)
+        sentiment, islamic, meaning = run_dream_analysis(
+            dream_text,
+            api_key=get_gemini_key(),
+            dream_type=dream_type,
+            sentiment_model=sentiment_model,
+            islamic_model=islamic_model,
+        )
         
         if conn:
             try:
