@@ -3,62 +3,225 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Dream Records</title>
+    <title>Dream Records — Admin</title>
     <style>
       body {
         font-family: Arial, sans-serif;
         margin: 20px;
+        background: #f5f5f5;
+      }
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        background: #fff;
+        padding: 24px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+      h1 {
+        color: #333;
+        margin-bottom: 8px;
+      }
+      .nav {
+        margin-bottom: 20px;
+      }
+      .nav a {
+        color: #388087;
+        margin-right: 16px;
+        text-decoration: none;
+      }
+      .nav a:hover {
+        text-decoration: underline;
+      }
+      .stats {
+        background: #388087;
+        color: #fff;
+        padding: 12px 20px;
+        border-radius: 8px;
+        display: inline-block;
+        margin-bottom: 20px;
       }
       table {
         width: 100%;
         border-collapse: collapse;
+        font-size: 14px;
       }
       th,
       td {
-        border: 1px solid #ccc;
-        padding: 8px;
+        border-bottom: 1px solid #ddd;
+        padding: 10px;
         text-align: left;
+        vertical-align: top;
       }
       th {
-        background: #f2f2f2;
+        background: #388087;
+        color: #fff;
+        position: sticky;
+        top: 0;
       }
       tr:nth-child(even) {
-        background: #fafafa;
+        background: #f9f9f9;
+      }
+      tr:hover {
+        background: #f0f8ff;
+      }
+      .dream-text {
+        max-width: 280px;
+        word-break: break-word;
+      }
+      .meaning-cell {
+        max-width: 320px;
+        font-size: 12px;
+        color: #444;
+        word-break: break-word;
+      }
+      .badge {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: bold;
+        text-transform: uppercase;
+      }
+      .sentiment-positive { background: #e8f5e9; color: #2e7d32; }
+      .sentiment-negative { background: #ffebee; color: #c62828; }
+      .sentiment-neutral { background: #fff3e0; color: #ef6c00; }
+      .islamic-rehmani { background: #e8f5e9; color: #1b5e20; }
+      .islamic-shaitani { background: #ffebee; color: #b71c1c; }
+      .islamic-nafsani { background: #fff8e1; color: #f57f17; }
+      .btn-delete {
+        background: #d32f2f;
+        color: #fff;
+        border: none;
+        padding: 8px 14px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 13px;
+      }
+      .btn-delete:hover {
+        background: #b71c1c;
+      }
+      .btn-delete:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
+      .toast {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        padding: 14px 20px;
+        border-radius: 8px;
+        color: #fff;
+        font-weight: bold;
+        display: none;
+        z-index: 1000;
+      }
+      .toast.success { background: #388087; }
+      .toast.error { background: #d32f2f; }
+      .table-wrap {
+        overflow-x: auto;
       }
     </style>
   </head>
   <body>
-    <h1>Saved Dream Records</h1>
-    <p><a href="/test">Back to test endpoint</a></p>
-    {% if dreams %}
-    <table>
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>User Email</th>
-          <th>Dream Text</th>
-          <th>Sentiment</th>
-          <th>Islamic</th>
-          <th>Meaning</th>
-          <th>Created At</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for dream in dreams %}
-        <tr>
-          <td>{{ dream[0] }}</td>
-          <td>{{ dream[1] }}</td>
-          <td>{{ dream[2] }}</td>
-          <td>{{ dream[3] }}</td>
-          <td>{{ dream[4] }}</td>
-          <td>{{ dream[5] }}</td>
-          <td>{{ dream[6] }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <p>No dreams found in the database.</p>
-    {% endif %}
+    <div class="container">
+      <h1>Saved Dream Records</h1>
+      <div class="nav">
+        <a href="/">Home</a>
+        <a href="/test">API Test</a>
+        <a href="/admin/db-viewer">DB Viewer</a>
+      </div>
+      {% if dreams %}
+      <div class="stats">Total dreams: <strong>{{ dream_count }}</strong></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>User Email</th>
+              <th>Dream Text</th>
+              <th>Sentiment</th>
+              <th>Islamic</th>
+              <th>Meaning</th>
+              <th>Created At</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="dreamsTableBody">
+            {% for dream in dreams %}
+            <tr id="row-{{ dream[0] }}">
+              <td>{{ dream[0] }}</td>
+              <td>{{ dream[1] }}</td>
+              <td class="dream-text">{{ dream[2] }}</td>
+              <td>
+                <span class="badge sentiment-{{ dream[3] or 'neutral' }}">{{ dream[3] or 'neutral' }}</span>
+              </td>
+              <td>
+                <span class="badge islamic-{{ dream[4] or 'nafsani' }}">{{ dream[4] or 'nafsani' }}</span>
+              </td>
+              <td class="meaning-cell">{{ dream[5] }}</td>
+              <td>{{ dream[6] }}</td>
+              <td>
+                <button
+                  type="button"
+                  class="btn-delete"
+                  onclick="deleteDream({{ dream[0] }})"
+                  title="Delete dream #{{ dream[0] }}"
+                >
+                  Delete
+                </button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p>No dreams found in the database.</p>
+      {% endif %}
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+      function showToast(message, type) {
+        const toast = document.getElementById('toast');
+        toast.textContent = message;
+        toast.className = 'toast ' + type;
+        toast.style.display = 'block';
+        setTimeout(() => { toast.style.display = 'none'; }, 3000);
+      }
+
+      async function deleteDream(id) {
+        if (!confirm('Dream #' + id + ' delete karna hai? Yeh action undo nahi ho sakti.')) {
+          return;
+        }
+        const btn = document.querySelector('#row-' + id + ' .btn-delete');
+        if (btn) btn.disabled = true;
+
+        try {
+          const resp = await fetch('/admin/dreams/' + id, { method: 'DELETE' });
+          const data = await resp.json();
+          if (resp.ok && data.success) {
+            document.getElementById('row-' + id)?.remove();
+            showToast('Dream #' + id + ' delete ho gaya', 'success');
+            const stats = document.querySelector('.stats strong');
+            if (stats) {
+              const n = Math.max(0, parseInt(stats.textContent, 10) - 1);
+              stats.textContent = n;
+            }
+            if (!document.querySelector('#dreamsTableBody tr')) {
+              location.reload();
+            }
+          } else {
+            showToast(data.error || 'Delete failed', 'error');
+            if (btn) btn.disabled = false;
+          }
+        } catch (err) {
+          showToast('Error: ' + err.message, 'error');
+          if (btn) btn.disabled = false;
+        }
+      }
+    </script>
   </body>
 </html>

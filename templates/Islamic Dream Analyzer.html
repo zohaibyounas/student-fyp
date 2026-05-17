@@ -1130,7 +1130,7 @@
                     <button class="action-btn logout-btn" onclick="logout()">
                         <i>🚪</i> Logout
                     </button>
-                    <button class="action-btn notification-btn" onclick="toggleNotification()">
+                    <button type="button" class="action-btn notification-btn" id="sidebarNotificationBtn" onclick="toggleNotification(event)">
                         <i>🔔</i> Notifications
                     </button>
                 </div>
@@ -1145,7 +1145,7 @@
                         <h1 id="welcomeUserName">Welcome, User!</h1>
                         <p>Explore the spiritual meaning behind your dreams</p>
                     </div>
-                    <div class="notification-badge" onclick="toggleNotificationPanel()">
+                    <div class="notification-badge" id="headerNotificationBtn" onclick="toggleNotificationPanel(event)">
                         <span>🔔</span>
                         <div class="badge" id="notificationBadge" style="display:none;">0</div>
                     </div>
@@ -1626,7 +1626,7 @@
             // Show loading state
             const submitBtn = this.querySelector('button[type="submit"]');
             const originalBtnText = submitBtn.innerHTML;
-            submitBtn.innerHTML = '<span>⏳</span> Analyzing with AI...';
+            submitBtn.innerHTML = '<span>⏳</span> Analyzing...';
             submitBtn.disabled = true;
             
             // Call backend API for AI-powered analysis
@@ -1681,44 +1681,61 @@
                 if (response.ok) {
                     const data = await response.json();
                     return {
-                        sentiment: data.sentiment || 'neutral',
-                        islamic: data.islamic_analysis || 'nafsani',
+                        sentiment: (data.sentiment || 'neutral').toLowerCase(),
+                        islamic: (data.islamic_analysis || 'nafsani').toLowerCase(),
                         meaning: data.meaning || 'Analysis could not be generated.'
                     };
                 }
             } catch (error) {
                 console.error('API dream analysis failed, using fallback:', error);
             }
-            return analyzeDreamFallback(dreamText, dreamType);
+            return await analyzeDreamLegacy(dreamText);
         }
 
-        function analyzeDreamFallback(dreamText, dreamType = null) {
-            const positiveWords = ['happy','beautiful','peace','peaceful','angel','success','love','heaven','joy','flying','blessing','light','garden','paradise','prayer','mosque','masjid','calm','safe','khushi','sukoon','aman','noor','jannat','rehmat','barkat','farishta','dua','namaz','muhabbat','kamyabi'];
-            const negativeWords = ['scary','scared','dark','monster','death','snake','fire','falling','fear','afraid','crying','blood','demon','evil','nightmare','drowning','chasing','hurt','pain','war','hell','devil','shaitan','ghost','dar','darr','andhera','saanp','aag','maut','khoon','pareshan','azab','dukh','ghum','bura','kharab'];
-            const rehmaniWords = ['prayer','mosque','masjid','quran','prophet','allah','angel','heaven','jannah','blessing','guidance','mercy','faith','kaaba','hadith','iman','namaz','dua','noor','rehmat','barkat','farishta'];
-            const shaitaniWords = ['devil','satan','demon','evil','sin','haram','magic','witch','hell','temptation','curse','darkness','shaitan','jinn','ghost','nightmare','shaitani','azab','jahannam'];
+        let _legacyDreamWords = null;
+
+        async function loadLegacyDreamWords() {
+            if (_legacyDreamWords) return _legacyDreamWords;
+            for (const url of ['/static/js/legacy_dream_words.json', '/api/dream-words']) {
+                try {
+                    const r = await fetch(url);
+                    if (r.ok) {
+                        _legacyDreamWords = await r.json();
+                        return _legacyDreamWords;
+                    }
+                } catch (e) { /* try next source */ }
+            }
+            return null;
+        }
+
+        function countLegacyKeywords(textLower, wordList) {
+            return (wordList || []).reduce((n, w) => n + (textLower.includes(w) ? 1 : 0), 0);
+        }
+
+        async function analyzeDreamLegacy(dreamText) {
+            const words = await loadLegacyDreamWords();
             const textLower = dreamText.toLowerCase();
-            let pC=0, nC=0, rC=0, sC=0;
-            positiveWords.forEach(w => { if(textLower.includes(w)) pC++; });
-            negativeWords.forEach(w => { if(textLower.includes(w)) nC++; });
-            rehmaniWords.forEach(w => { if(textLower.includes(w)) rC++; });
-            shaitaniWords.forEach(w => { if(textLower.includes(w)) sC++; });
-            if (dreamType === 'nightmare' && pC === nC) { nC += 2; sC += 1; }
-            if (dreamType === 'prophetic' && pC === nC) { pC += 2; rC += 2; }
-            const sentiment = pC > nC ? 'positive' : (nC > pC ? 'negative' : 'neutral');
-            const islamic = rC > sC ? 'rehmani' : (sC > rC ? 'shaitani' : 'nafsani');
+            let positiveCount = countLegacyKeywords(textLower, words && words.positive);
+            let negativeCount = countLegacyKeywords(textLower, words && words.negative);
+            let rehmaniCount = countLegacyKeywords(textLower, words && words.rehmani);
+            let shaitaniCount = countLegacyKeywords(textLower, words && words.shaitani);
+            let sentiment = positiveCount > negativeCount ? 'positive' : (negativeCount > positiveCount ? 'negative' : 'neutral');
+            let islamic = rehmaniCount > shaitaniCount ? 'rehmani' : (shaitaniCount > rehmaniCount ? 'shaitani' : 'nafsani');
             const meanings = {
-                'positive-rehmani': "🌿 Bohat acha roohani khwab! Allah ki rehmat, hidayat aur barkat ki nishani hai.",
-                'positive-shaitani': "⚠️ Khwab acha lagta hai lekin chupi hui pareshani ho sakti hai — sone se pehle Ayat-ul-Kursi parhein.",
-                'positive-nafsani': "💭 Yeh khwab aap ki umeed aur khushi ko dikhata hai.",
-                'negative-rehmani': "🕌 Roohani ishara — tawba, namaz aur dua mein izafa karein.",
-                'negative-shaitani': "🔥 Khaufnaak khwab! Teen Qul aur Ayat-ul-Kursi parhein, daein karvat son.",
-                'negative-nafsani': "😔 Zehni dabao ya khauf ki nishani — apne masail par ghor karein.",
-                'neutral-rehmani': "📖 Iman aur zindagi ke faislon par ghor karne ka ishara.",
-                'neutral-shaitani': "👁️ Chupi hui pareshani — zyada dhikr aur Quran se madad lein.",
-                'neutral-nafsani': "🧠 Roz marra ke khayalat aur zehni halat ko dikhata hai."
+                'positive-rehmani': "🌿 This is a very positive and spiritually significant dream! It indicates divine blessings, success, and spiritual growth in your life. Such dreams are considered good omens in Islamic tradition.",
+                'positive-shaitani': "⚠️ This dream appears positive but may contain subtle negative influences. Be cautious of temptations appearing as good things. Seek protection through prayers and good deeds.",
+                'positive-nafsani': "💭 This positive dream reflects your inner desires, hopes, and aspirations. It shows optimism for the future and indicates personal growth and satisfaction.",
+                'negative-rehmani': "🕌 This negative dream may be a spiritual warning or test from Allah. It suggests you need to strengthen your faith, increase prayers, and seek protection from negative influences.",
+                'negative-shaitani': "🔥 This is a warning dream! It indicates strong negative influences or shaitani whispers. Seek protection through prayers, recite Ayat-ul-Kursi and the last three Surahs of Quran before sleeping.",
+                'negative-nafsani': "😔 This negative dream reflects your fears, anxieties, stress, or unresolved issues in your waking life. It may indicate the need for emotional healing and stress management.",
+                'neutral-rehmani': "📖 This dream has spiritual elements. It reflects your connection with faith and may contain subtle guidance or reminders about your spiritual duties.",
+                'neutral-shaitani': "👁️ This neutral dream may contain hidden negative influences. Stay alert to your surroundings and maintain your spiritual practices for protection.",
+                'neutral-nafsani': "🧠 This dream reflects your daily thoughts, experiences, and subconscious mind. It's a normal reflection of your mental processes and doesn't carry significant spiritual meaning."
             };
-            const meaning = meanings[`${sentiment}-${islamic}`] || meanings['neutral-nafsani'];
+            let meaning = meanings[`${sentiment}-${islamic}`] || meanings['neutral-nafsani'];
+            if (positiveCount || negativeCount || rehmaniCount || shaitaniCount) {
+                meaning += `<br><br><small style="color: #666; font-size: 12px;">Analysis based on: ${positiveCount} positive, ${negativeCount} negative, ${rehmaniCount} spiritual, ${shaitaniCount} negative-spiritual keywords found.</small>`;
+            }
             return { sentiment, islamic, meaning };
         }
 
@@ -1764,6 +1781,7 @@
 
         // Initialize dream inputs on page load
         document.addEventListener('DOMContentLoaded', function() {
+            loadLegacyDreamWords();
             updateDreamInputs();
             // Set default date to today
             const today = new Date().toISOString().split('T')[0];
@@ -1813,9 +1831,26 @@
                 showNotification('Please enter at least one dream description!');
                 return;
             }
+
+            const submitBtn = this.querySelector('button[type="submit"]');
+            const patternBtnHtml = submitBtn ? submitBtn.innerHTML : '';
+            if (submitBtn) {
+                submitBtn.innerHTML = '<span>⏳</span> Dataset se analyze ho raha hai...';
+                submitBtn.disabled = true;
+            }
+
+            const dreamAnalyses = [];
+            for (const dream of patternData.dreams) {
+                dreamAnalyses.push(await analyzeDream(dream.description, dream.type));
+            }
             
-            // Analyze patterns
-            const analysis = analyzePatterns(patternData);
+            // Analyze sleep/mood patterns + show dataset result per dream
+            const analysis = analyzePatterns(patternData, dreamAnalyses);
+
+            if (submitBtn) {
+                submitBtn.innerHTML = patternBtnHtml;
+                submitBtn.disabled = false;
+            }
             
             // Display results
             document.getElementById('patternInsights').innerHTML = analysis.insights;
@@ -1840,10 +1875,10 @@
             // Save pattern data
             savePatternData(patternData, analysis);
             
-            // Save each dream to tracker and diary
+            // Save each dream to tracker and diary (already analyzed via dataset API)
             for (let index = 0; index < patternData.dreams.length; index++) {
                 const dream = patternData.dreams[index];
-                const dreamAnalysis = await analyzeDream(dream.description, dream.type);
+                const dreamAnalysis = dreamAnalyses[index];
                 const dreamData = {
                     id: Date.now() + index,
                     dream: dream.description,
@@ -1862,7 +1897,7 @@
             showNotification('Pattern analysis completed successfully! All dreams saved to your diary.');
         });
 
-        function analyzePatterns(data) {
+        function analyzePatterns(data, dreamAnalyses = []) {
             let insights = '';
             let sleepPattern = '';
             let moodImpact = '';
@@ -1941,11 +1976,26 @@
                     .map(([type, count]) => `• <strong>${type}:</strong> ${count} dream(s)`)
                     .join('<br>');
                 
+                let datasetBlock = '';
+                if (dreamAnalyses.length) {
+                    datasetBlock = '<div style="margin-top:15px;padding:12px;background:#f0f7f8;border-radius:8px;text-align:left;">';
+                    datasetBlock += '<strong>📚 Dataset Analysis (training CSV):</strong>';
+                    dreamAnalyses.forEach((a, i) => {
+                        datasetBlock += `<div style="margin-top:12px;padding-top:10px;border-top:1px solid #ddd;">`;
+                        datasetBlock += `<strong>Dream ${i + 1}</strong> `;
+                        datasetBlock += `<span class="sentiment-badge sentiment-${a.sentiment}">${a.sentiment.toUpperCase()}</span> `;
+                        datasetBlock += `<span class="islamic-badge islamic-${a.islamic}">${a.islamic.toUpperCase()}</span>`;
+                        datasetBlock += `<div style="margin-top:6px;font-size:13px;color:#444;">${a.meaning}</div></div>`;
+                    });
+                    datasetBlock += '</div>';
+                }
+
                 dreamTypeAnalysis = `
                     <strong>Dominant Dream Type:</strong> ${dominantType}<br>
                     <strong>Dream Distribution:</strong><br>
                     ${dreamTypesHTML}<br>
                     <strong>Total Dreams Analyzed:</strong> ${data.dreams.length}
+                    ${datasetBlock}
                 `;
                 
                 // Generate insights
@@ -2195,6 +2245,18 @@
                 // Update displays
                 await loadTrackerData();
                 await loadDiaryEntries();
+
+                // Check mental health after each new dream
+                let allDreams = [];
+                if (currentUser) {
+                    try {
+                        const r = await fetch(`/api/user-dreams?email=${encodeURIComponent(currentUser.email)}`);
+                        if (r.ok) allDreams = (await r.json()).dreams || [];
+                    } catch (_) {}
+                } else {
+                    allDreams = JSON.parse(localStorage.getItem('trackerDreams') || '[]');
+                }
+                await checkMentalHealthAlert(allDreams);
                 
                 return true;
             } catch (error) {
@@ -2274,7 +2336,6 @@
             document.getElementById('negativeDreams').textContent = negative;
             document.getElementById('neutralDreams').textContent = neutral;
 
-            // ── Mental Health Alert: 7+ consecutive negative dreams ──
             checkMentalHealthAlert(dreams);
             
             // Display recent dreams (max 10)
@@ -2303,52 +2364,79 @@
             });
         }
 
-        // ── Mental Health Alert: Check for 7 consecutive negative dreams ──────
-        async function checkMentalHealthAlert(dreams) {
-            if (!dreams || dreams.length < 7) return;
+        // Mental health: 7+ negative dreams in last 7 days (same week)
+        function getNegativeDreamsThisWeek(dreams) {
+            const now = new Date();
+            const weekStart = new Date(now);
+            weekStart.setDate(now.getDate() - 6);
+            weekStart.setHours(0, 0, 0, 0);
 
-            // Count consecutive negative dreams from most recent
-            let consecutiveNegative = 0;
-            for (let i = 0; i < dreams.length; i++) {
-                if (dreams[i].sentiment === 'negative') {
-                    consecutiveNegative++;
-                } else {
-                    break; // Chain broken — only count consecutive from top
-                }
+            return dreams.filter(d => {
+                const sent = (d.sentiment || '').toLowerCase();
+                if (sent !== 'negative') return false;
+                const raw = d.timestamp || d.created_at || d.date;
+                if (!raw) return true;
+                const dt = new Date(raw);
+                return !isNaN(dt) && dt >= weekStart;
+            });
+        }
+
+        function getMentalHealthWeekKey() {
+            const now = new Date();
+            const yearStart = new Date(now.getFullYear(), 0, 1);
+            const weekNum = Math.ceil(((now - yearStart) / 86400000 + yearStart.getDay() + 1) / 7);
+            return 'mentalHealthAlert_' + now.getFullYear() + '-week-' + weekNum;
+        }
+
+        async function checkMentalHealthAlert(dreams) {
+            if (!dreams || dreams.length === 0) return;
+
+            const negativeThisWeek = getNegativeDreamsThisWeek(dreams);
+            const negativeCount = negativeThisWeek.length;
+
+            if (negativeCount < 7) return;
+
+            const alertKey = getMentalHealthWeekKey();
+            if (localStorage.getItem(alertKey) === 'sent') {
+                localStorage.removeItem(alertKey);
+            }
+            if (localStorage.getItem(alertKey) === 'email_sent') return;
+
+            const notifyKey = alertKey + '_popup';
+            if (!localStorage.getItem(notifyKey)) {
+                addNotificationItem(`⚠️ Mental Health Alert: Is hafte ${negativeCount} negative dreams record hue!`);
+                showNotification(`⚠️ Mental Health Alert: Aap ne is hafte ${negativeCount} negative dreams likhe hain.`);
+                localStorage.setItem(notifyKey, '1');
             }
 
-            if (consecutiveNegative < 7) return;
+            localStorage.setItem('lastMentalHealthAlertCount', String(negativeCount));
 
-            // Check if we already sent alert for this count (avoid spam)
-            const lastAlertCount = parseInt(localStorage.getItem('lastMentalHealthAlertCount') || '0');
-            if (consecutiveNegative <= lastAlertCount) return;
-
-            // Show in-app alert first
-            addNotificationItem(`⚠️ Mental Health Alert: ${consecutiveNegative} consecutive negative dreams detected!`);
-            showNotification(`⚠️ Mental Health Alert: Aap ne ${consecutiveNegative} consecutive negative dreams record kiye hain. Please apna khayal rakhein!`);
-
-            // Mark as alerted
-            localStorage.setItem('lastMentalHealthAlertCount', consecutiveNegative);
-
-            // Get logged-in user email
             const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
             const userEmail = currentUser ? currentUser.email : null;
             const userName  = currentUser ? currentUser.name  : 'User';
 
             if (!userEmail) {
-                // Show modal asking for email
-                showMentalHealthModal(consecutiveNegative, userName);
+                showMentalHealthModal(negativeCount, userName, '');
                 return;
             }
 
-            // Send email alert to backend
-            await sendMentalHealthEmailAlert(userEmail, userName, consecutiveNegative);
+            const result = await sendMentalHealthEmailAlert(userEmail, userName, negativeCount);
+            if (result && result.email_sent) {
+                localStorage.setItem(alertKey, 'email_sent');
+            } else {
+                showMentalHealthModal(negativeCount, userName, userEmail, result && result.error);
+            }
         }
 
-        function showMentalHealthModal(count, userName) {
-            // Create modal dynamically
+        function showMentalHealthModal(count, userName, prefilledEmail = '', serverError = '') {
             const existing = document.getElementById('mentalHealthModal');
             if (existing) existing.remove();
+
+            const safeName = String(userName || 'User').replace(/'/g, "\\'");
+            const emailVal = prefilledEmail ? ` value="${String(prefilledEmail).replace(/"/g, '&quot;')}"` : '';
+            const serverNote = serverError
+                ? `<p style="color:#C62828;font-size:13px;margin-bottom:12px;text-align:left;">${serverError}</p>`
+                : '<p style="color:#888;font-size:12px;margin-bottom:12px;">Server par Gmail App Password (.env) set hona chahiye.</p>';
 
             const modal = document.createElement('div');
             modal.id = 'mentalHealthModal';
@@ -2357,24 +2445,29 @@
                 <div style="background:#fff;border-radius:16px;padding:30px;max-width:440px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);text-align:center;">
                     <div style="font-size:48px;margin-bottom:10px;">🌙</div>
                     <h3 style="color:#C62828;margin-bottom:10px;">Mental Health Alert</h3>
-                    <p style="color:#555;margin-bottom:20px;">
-                        Aap ne <strong>${count} consecutive negative dreams</strong> record kiye hain.
-                        Aapki well-being ki parwah karte hue, hum aapko ek Islamic guidance email bhejna chahte hain.
+                    <p style="color:#555;margin-bottom:12px;">
+                        Is hafte <strong>${count} NEGATIVE</strong> dreams record hue. Guidance email bhejni hai?
                     </p>
-                    <input type="email" id="alertEmailInput" placeholder="Apni email daalo"
+                    ${serverNote}
+                    <input type="email" id="alertEmailInput" placeholder="Apni email daalo"${emailVal}
                         style="width:100%;padding:12px;border:1px solid #ddd;border-radius:8px;font-size:14px;box-sizing:border-box;margin-bottom:15px;" />
-                    <div style="display:flex;gap:10px;justify-content:center;">
-                        <button onclick="submitMentalHealthEmail(${count},'${userName}')"
+                    <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+                        <button onclick="submitMentalHealthEmail(${count},'${safeName}')"
                             style="background:#388087;color:#fff;border:none;padding:12px 24px;border-radius:8px;cursor:pointer;font-size:14px;">
                             📧 Email Bhejo
                         </button>
-                        <button onclick="document.getElementById('mentalHealthModal').remove()"
+                        <button onclick="dismissMentalHealthModal()"
                             style="background:#eee;color:#333;border:none;padding:12px 24px;border-radius:8px;cursor:pointer;font-size:14px;">
                             Baad Mein
                         </button>
                     </div>
                 </div>`;
             document.body.appendChild(modal);
+        }
+
+        function dismissMentalHealthModal() {
+            const modal = document.getElementById('mentalHealthModal');
+            if (modal) modal.remove();
         }
 
         async function submitMentalHealthEmail(count, userName) {
@@ -2384,8 +2477,13 @@
                 alert('Valid email address daalo');
                 return;
             }
-            document.getElementById('mentalHealthModal').remove();
-            await sendMentalHealthEmailAlert(email, userName, count);
+            dismissMentalHealthModal();
+            const result = await sendMentalHealthEmailAlert(email, userName, count);
+            if (result && result.email_sent) {
+                localStorage.setItem(getMentalHealthWeekKey(), 'email_sent');
+            } else if (result && result.error) {
+                showMentalHealthModal(count, userName, email, result.error);
+            }
         }
 
         async function sendMentalHealthEmailAlert(email, userName, count) {
@@ -2400,13 +2498,16 @@
                     if (data.email_sent) {
                         showNotification('✅ Mental health alert email bhej diya gaya: ' + email);
                     } else {
-                        showNotification('⚠️ Alert noted! (Email server abhi configure nahi hai — app.py mein EMAIL_SENDER set karo)');
+                        const hint = data.error || data.message || 'Email server configure nahi hai';
+                        showNotification('⚠️ ' + hint);
                     }
                 } else {
                     showNotification('⚠️ Email send nahi hua: ' + (data.error || 'Unknown error'));
                 }
+                return data;
             } catch (err) {
                 showNotification('⚠️ Alert email error: ' + err.message);
+                return { success: false, email_sent: false, error: err.message };
             }
         }
         // ── End Mental Health Alert ──────────────────────────────────────────
@@ -2607,15 +2708,33 @@
             document.getElementById('notificationPopup').classList.remove('show');
         }
 
-        function toggleNotification() {
-            toggleNotificationPanel();
+        function toggleNotification(e) {
+            if (e) e.stopPropagation();
+            toggleNotificationPanel(e, true);
         }
 
-        function toggleNotificationPanel() {
+        function toggleNotificationPanel(e, fromSidebar) {
+            if (e) e.stopPropagation();
             const panel = document.getElementById('notificationPanel');
-            if (panel.style.display === 'none' || !panel.style.display) {
+            if (!panel) return;
+
+            notificationItems = JSON.parse(localStorage.getItem('notificationItems') || '[]');
+            const isHidden = panel.style.display === 'none' || !panel.style.display;
+
+            if (isHidden) {
                 renderNotificationList();
                 panel.style.display = 'block';
+                if (fromSidebar) {
+                    panel.style.left = '20px';
+                    panel.style.right = 'auto';
+                    panel.style.top = 'auto';
+                    panel.style.bottom = '90px';
+                } else {
+                    panel.style.left = 'auto';
+                    panel.style.right = '30px';
+                    panel.style.top = '80px';
+                    panel.style.bottom = 'auto';
+                }
                 markNotificationsRead();
             } else {
                 panel.style.display = 'none';
@@ -2682,10 +2801,12 @@
 
         document.addEventListener('click', function(e) {
             const panel = document.getElementById('notificationPanel');
-            const badge = document.querySelector('.notification-badge');
-            if (panel.style.display === 'block' && !panel.contains(e.target) && !badge.contains(e.target)) {
-                panel.style.display = 'none';
-            }
+            if (!panel || panel.style.display !== 'block') return;
+            if (panel.contains(e.target)) return;
+            if (e.target.closest('#headerNotificationBtn')) return;
+            if (e.target.closest('#sidebarNotificationBtn')) return;
+            if (e.target.closest('.notification-btn')) return;
+            panel.style.display = 'none';
         });
 
         // Initialize sample data

@@ -4,13 +4,14 @@ import re
 import os
 import json
 import requests
-import smtplib
-from email.message import EmailMessage
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 load_dotenv()
 from config import conn
 from utils.dream_analysis import analyze_dream as run_dream_analysis
+from utils.dream_dataset import get_dataset
+from utils.email_alert import send_mental_health_email
+from config import email_is_configured
 
 app = Flask(__name__)
 
@@ -56,6 +57,30 @@ def get_gemini_key():
     return key if key else None
 
 # ─── Dream Analyzer ────────────────────────────────────────────────────────────
+
+def _dataset_status():
+    vec = None
+    if sentiment_model:
+        try:
+            vec = sentiment_model[1] if hasattr(sentiment_model[1], "transform") else sentiment_model[0]
+        except (IndexError, TypeError):
+            pass
+    ds = get_dataset(vec)
+    if ds.loaded:
+        return {"status": "loaded", "path": ds.source, "rows": len(ds.rows)}
+    return {"status": "not loaded", "hint": "Put training CSV in data/ folder (see data/README.txt)"}
+
+
+_ds_boot = _dataset_status()
+if _ds_boot.get("status") == "loaded":
+    print(f"📊 Dream dataset loaded: {_ds_boot['rows']} dreams from {_ds_boot['path']}")
+else:
+    print(f"⚠️  Dream dataset not found — {_ds_boot.get('hint', '')}")
+
+if email_is_configured():
+    print("✅ Mental health alert email: Gmail configured")
+else:
+    print("⚠️  Mental health alert email: NOT configured — set Gmail App Password in .env")
 
 # ─── Routes ──────────────────────────────────────────────────────────────────
 @app.route("/")
@@ -116,7 +141,8 @@ def test():
         "models": {
             "sentiment": "loaded" if sentiment_model else "not loaded",
             "islamic": "loaded" if islamic_model else "not loaded"
-        }
+        },
+        "dataset": _dataset_status()
     })
 
 @app.route("/api/register", methods=["POST"])
@@ -297,6 +323,23 @@ def delete_user_dream(dream_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/dream-words", methods=["GET"])
+def api_dream_words():
+    """Same keyword lists as backend legacy analyzer (for client-side fallback)."""
+    from utils.legacy_dream_analyzer import (
+        POSITIVE_WORDS,
+        NEGATIVE_WORDS,
+        REHMANI_WORDS,
+        SHAITANI_WORDS,
+    )
+    return jsonify({
+        "positive": POSITIVE_WORDS,
+        "negative": NEGATIVE_WORDS,
+        "rehmani": REHMANI_WORDS,
+        "shaitani": SHAITANI_WORDS,
+    })
+
+
 @app.route("/analyze-dream", methods=["POST"])
 def dream_analyzer():
     data = request.json
@@ -325,7 +368,23 @@ def dream_analyzer():
             except Exception as db_e:
                 print(f"⚠️  Could not save to database: {db_e}")
         
-        return jsonify({"sentiment": sentiment, "islamic_analysis": islamic, "meaning": meaning})
+        vec = sentiment_model[1] if sentiment_model and hasattr(sentiment_model[1], "transform") else None
+        ds = get_dataset(vec)
+        if isinstance(meaning, str) and meaning.startswith("[Dataset:"):
+            source = "dataset_csv"
+        elif isinstance(meaning, str) and meaning.startswith("[Trained"):
+            source = "ml_models"
+        elif get_gemini_key() and isinstance(meaning, str) and "Gemini" in meaning:
+            source = "gemini"
+        else:
+            from utils.legacy_dream_analyzer import analyze_dream_legacy as _legacy_check
+            source = "legacy_keywords" if _legacy_check(dream_text)[:2] == (sentiment, islamic) else "keywords"
+        return jsonify({
+            "sentiment": sentiment,
+            "islamic_analysis": islamic,
+            "meaning": meaning,
+            "analysis_source": source,
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -432,74 +491,38 @@ def chatbot():
 
 
 # ─── Mental Health Email Alert ────────────────────────────────────────────────
-# 👇 APNI GMAIL AUR APP PASSWORD YAHAN DAALO
-# Gmail App Password kaise banayein: Google Account > Security > 2-Step Verification > App Passwords
-EMAIL_SENDER   = os.environ.get("EMAIL_SENDER",   "fataekim2601@gmail.com")
-EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD", "kim2601@")
+# Gmail App Password: Google Account → Security → 2-Step Verification → App Passwords
+# Set EMAIL_SENDER and EMAIL_PASSWORD in .env (not your normal Gmail password).
+
+@app.route("/api/email-status", methods=["GET"])
+def api_email_status():
+    """Whether Gmail App Password is configured on the server."""
+    return jsonify({
+        "configured": email_is_configured(),
+        "hint": (
+            "Set EMAIL_SENDER and EMAIL_PASSWORD in .env using a Gmail App Password "
+            "(Google Account → Security → App Passwords)."
+        ) if not email_is_configured() else None,
+    })
+
 
 @app.route("/send-mental-health-alert", methods=["POST"])
 def send_mental_health_alert():
-    data           = request.json
-    to_email       = data.get("email", "").strip()
+    data = request.get_json(silent=True) or {}
+    to_email = (data.get("email") or "").strip()
     negative_count = data.get("negativeCount", 7)
-    user_name      = data.get("userName", "User")
+    user_name = (data.get("userName") or "User").strip() or "User"
 
     if not to_email:
         return jsonify({"error": "Email address required hai"}), 400
 
-    if not EMAIL_SENDER or not EMAIL_PASSWORD:
-        print(f"⚠️  Email credentials not set — cannot send alert to {to_email}")
-        return jsonify({
-            "success": False,
-            "error": "Email credentials not configured on server",
-            "email_sent": False
-        }), 500
-
-    try:
-        msg            = EmailMessage()
-        msg["Subject"] = "🌙 Islamic Dream Analyzer — Mental Health Alert"
-        msg["From"]    = EMAIL_SENDER
-        msg["To"]      = to_email
-        msg.set_content(f"""Assalamu Alaikum {user_name},
-
-⚠️  MENTAL HEALTH ALERT — Islamic Dream Analyzer
-
-Aap ne {negative_count} consecutive negative dreams record kiye hain.
-Yeh pattern stress, anxiety, ya emotional imbalance ki nishani ho sakta hai.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Islamic Guidance & Suggestions:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-1. 📿 Sone se pehle Ayat-ul-Kursi (2:255) parhein
-2. 🌙 Sone se pehle Surah Ikhlas, Falaq, Naas teen teen baar parhein
-3. 🤲 Dua: "A'oothu bi kalimaatillaahit-taammaati min sharri maa khalaq"
-4. 💚 Kisi trusted Islamic counselor ya mental health professional se baat karein
-5. 🧘 Din mein dhikr ki practice karein — SubhanAllah, Alhamdulillah, Allahu Akbar
-6. 😴 Raat ko 7-8 ghante ki neend zaroor lein
-
-Rasool Allah ﷺ ne farmaya: "Agar koi bura khwab dekhe to Shaytan se Allah ki panaah maange aur us khwab ki burai se bhi." (Bukhari & Muslim)
-
-Aap akele nahi hain. Allah aapko sukoon aur sehat ata farmaye. Ameen.
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Islamic Dream Analyzer — Mental Health Support
-""")
-
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(EMAIL_SENDER, EMAIL_PASSWORD)
-            server.send_message(msg)
-
+    result = send_mental_health_email(to_email, user_name, negative_count)
+    if result.get("email_sent"):
         print(f"✅ Mental health alert sent to {to_email}")
-        return jsonify({"success": True, "message": "Mental health alert email bhej diya gaya!", "email_sent": True})
+    else:
+        print(f"⚠️  Mental health alert not emailed to {to_email}: {result.get('error', 'not configured')}")
 
-    except smtplib.SMTPAuthenticationError:
-        return jsonify({
-            "error": "Gmail login fail. Regular password nahi, App Password use karo.",
-            "help": "Google Account > Security > 2-Step Verification > App Passwords"
-        }), 500
-    except Exception as e:
-        return jsonify({"error": f"Email send nahi hua: {str(e)}"}), 500
+    return jsonify(result), 200
 
 
 # ─── Dream Diary ──────────────────────────────────────────────────────────────
@@ -539,9 +562,28 @@ def view_dreams():
                 "ORDER BY ud.created_at DESC"
             )
             rows = cursor.fetchall()
-        return render_template("dreams.html", dreams=rows)
+        return render_template("dreams.html", dreams=rows, dream_count=len(rows))
     except Exception as e:
         return f"Error loading dreams: {str(e)}", 500
+
+
+@app.route("/admin/dreams/<int:dream_id>", methods=["DELETE"])
+def admin_delete_dream(dream_id):
+    if not conn:
+        return jsonify({"error": "Database not connected"}), 500
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "DELETE FROM user_dreams WHERE id = %s RETURNING id",
+                (dream_id,),
+            )
+            deleted = cursor.fetchone()
+            if not deleted:
+                return jsonify({"error": "Dream not found"}), 404
+            conn.commit()
+        return jsonify({"success": True, "id": dream_id})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/admin/db-viewer")
 def db_viewer():

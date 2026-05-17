@@ -66,3 +66,27 @@ if DATABASE_URL:
         conn = None
 else:
     print("⚠️  DATABASE_URL not set (app will still work without it)")
+
+# Email (Gmail App Password — not your normal login password)
+EMAIL_CONFIG = {
+    "sender": (os.environ.get("EMAIL_SENDER") or "").strip(),
+    "password": (os.environ.get("EMAIL_PASSWORD") or "").strip(),
+}
+
+_PLACEHOLDER_EMAIL_PASSWORDS = frozenset(
+    {"kim2601@", "your_gmail_app_password_here", "your_app_password_here", "changeme"}
+)
+
+
+def email_is_configured():
+    """True when sender + Gmail App Password are set (not placeholder values)."""
+    sender = EMAIL_CONFIG["sender"]
+    password = EMAIL_CONFIG["password"]
+    if not sender or not password:
+        return False
+    if password.lower() in _PLACEHOLDER_EMAIL_PASSWORDS:
+        return False
+    # Gmail app passwords are 16 characters (often shown as xxxx xxxx xxxx xxxx)
+    if len(password.replace(" ", "")) < 12:
+        return False
+    return True

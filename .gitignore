@@ -24,5 +24,6 @@ env/
 .DS_Store
 Thumbs.db
 
-# Optional: large ML models (uncomment if you don't want them on GitHub)
-# models/*.pkl
+# Dataset CSV may be large — keep local, share separately
+data/*.csv
+!data/README.txt
